@@ -23,7 +23,34 @@ type ExampleReply struct {
 }
 
 // Add your RPC definitions here.
-
+type ask_type int
+const (
+	ask_type_ask	ask_type = 0
+	ask_type_fin	ask_type = 1
+)
+type AskTaskArgs struct {
+	AskType ask_type
+	FinWorkId	int
+	HaveFinishWork	bool
+	WorkerId int
+}
+type work_type int
+const (
+	work_type_map	work_type = 0
+	work_type_reduce	work_type = 1
+	work_type_wait	work_type = 2
+	work_type_finish	work_type = 3
+)
+type AskTaskReply struct {
+	WorkId int
+}
+type AskEnv struct{
+}
+type AskEnvReply struct{
+	Files []string
+	NReduce int
+	WorkerId	int
+}
 
 // Cook up a unique-ish UNIX-domain socket name
 // in /var/tmp, for the coordinator.
