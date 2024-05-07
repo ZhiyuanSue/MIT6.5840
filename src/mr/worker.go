@@ -4,6 +4,8 @@ import "fmt"
 import "log"
 import "net/rpc"
 import "hash/fnv"
+import "os"
+import "io/ioutil"
 
 
 //
@@ -23,8 +25,30 @@ func ihash(key string) int {
 	h.Write([]byte(key))
 	return int(h.Sum32() & 0x7fffffff)
 }
+func Map(mapf func(string,string) []KeyValue,
+	filename string,
+	nReduce int,	
+){
+	file, err := os.Open(filename)
+	if err != nil {
+		log.Fatalf("cannot open %v", filename)
+	}
+	content, err := ioutil.ReadAll(file)
+	if err != nil {
+		log.Fatalf("cannot read %v", filename)
+	}
+	file.Close()
+	kva := mapf(filename, string(content))
+	for i :=0;i<len(kva);i++{
+		fmt.Printf("kva is %v\n",kva[i])
+	}
+	
+}
+func Reduce(reducef func(string,string) []KeyValue,
+	files []string,
+	nReduce int){
 
-
+}
 //
 // main/mrworker.go calls this function.
 //
@@ -51,41 +75,30 @@ func Worker(mapf func(string, string) []KeyValue,
 	for{
 		ok := call("Coordinator.AssignTask",&asktask,&reply)
 		if ok {
-			var WorkType work_type
 			if reply.WorkId == -1{
-				WorkType = work_type_wait
-			} else if reply.WorkId == -2{
-				WorkType = work_type_finish
-			} else if reply.WorkId>=0 && reply.WorkId < len(envreply.Files){
-				WorkType = work_type_map
-			} else if reply.WorkId>=len(envreply.Files) && reply.WorkId<(len(envreply.Files)+envreply.NReduce){
-				WorkType = work_type_reduce
-			}
-			fmt.Printf("worktype is %v work id is %v",WorkType,reply.WorkId)
-
-			switch WorkType {
-			case work_type_map:
-				fmt.Printf("get a map task and id is %v\n",reply.WorkId)
-				asktask.AskType=ask_type_fin
-				asktask.WorkerId = envreply.WorkerId
-				asktask.HaveFinishWork = true
-				asktask.FinWorkId = reply.WorkId
-			case work_type_reduce:
-				fmt.Printf("get a reduce task and id is %v\n",reply.WorkId)
-				asktask.AskType=ask_type_fin
-				asktask.WorkerId = envreply.WorkerId
-				asktask.HaveFinishWork = true
-				asktask.FinWorkId = reply.WorkId
-			case work_type_wait:
 				fmt.Printf("get a wait task\n")
 				asktask.AskType = ask_type_ask
 				asktask.WorkerId = envreply.WorkerId
 				asktask.FinWorkId = -1
 				asktask.HaveFinishWork = false
-			case work_type_finish:
+			} else if reply.WorkId == -2{
 				fmt.Printf("get a finish task\n")
 				return
-			default:
+			} else if reply.WorkId>=0 && reply.WorkId < len(envreply.Files){
+				/*map task*/
+				fmt.Printf("get a map task and id is %v\n",reply.WorkId)
+				Map(mapf,envreply.Files[reply.WorkId],envreply.NReduce)
+				asktask.AskType=ask_type_fin
+				asktask.WorkerId = envreply.WorkerId
+				asktask.HaveFinishWork = true
+				asktask.FinWorkId = reply.WorkId
+			} else if reply.WorkId>=len(envreply.Files) && reply.WorkId<(len(envreply.Files)+envreply.NReduce){
+				fmt.Printf("get a reduce task and id is %v\n",reply.WorkId)
+				asktask.AskType=ask_type_fin
+				asktask.WorkerId = envreply.WorkerId
+				asktask.HaveFinishWork = true
+				asktask.FinWorkId = reply.WorkId
+			}else{
 				fmt.Printf("some error have happened from server,exit\n")
 				return
 			}
