@@ -6,6 +6,7 @@ import "net/rpc"
 import "hash/fnv"
 import "os"
 import "io/ioutil"
+import "strconv"
 
 
 //
@@ -27,6 +28,7 @@ func ihash(key string) int {
 }
 func Map(mapf func(string,string) []KeyValue,
 	filename string,
+	WorkId int,
 	nReduce int,	
 ){
 	file, err := os.Open(filename)
@@ -38,11 +40,26 @@ func Map(mapf func(string,string) []KeyValue,
 		log.Fatalf("cannot read %v", filename)
 	}
 	file.Close()
+	intermediate := [][]KeyValue{}
 	kva := mapf(filename, string(content))
-	for i :=0;i<len(kva);i++{
-		fmt.Printf("kva is %v\n",kva[i])
+	for index :=0;index < nReduce;index++{
+		intermediate=append(intermediate,[]KeyValue{})
 	}
-	
+	for i :=0;i<len(kva);i++{
+		key := kva[i].Key
+		index := ihash(key) % nReduce
+		intermediate[index]=append(intermediate[index],kva[i])
+	}
+	/*TODO:before we try to write in the file,we need to check whether the worker for this work is me*/
+	for index :=0;index < nReduce;index++{
+		oname :="mr-"+strconv.Itoa(WorkId)+"-"+strconv.Itoa(index)
+		fmt.Printf("%v\n",oname)
+		ofile, _ := os.Create(oname)
+		for i :=0; i < len(intermediate[index]); i++{
+			fmt.Fprintf(ofile, "%v %v\n", intermediate[index][i].Key, intermediate[index][i].Value)
+		}
+		ofile.Close()
+	}
 }
 func Reduce(reducef func(string,string) []KeyValue,
 	files []string,
@@ -87,7 +104,7 @@ func Worker(mapf func(string, string) []KeyValue,
 			} else if reply.WorkId>=0 && reply.WorkId < len(envreply.Files){
 				/*map task*/
 				fmt.Printf("get a map task and id is %v\n",reply.WorkId)
-				Map(mapf,envreply.Files[reply.WorkId],envreply.NReduce)
+				Map(mapf,envreply.Files[reply.WorkId],reply.WorkId,envreply.NReduce)
 				asktask.AskType=ask_type_fin
 				asktask.WorkerId = envreply.WorkerId
 				asktask.HaveFinishWork = true
