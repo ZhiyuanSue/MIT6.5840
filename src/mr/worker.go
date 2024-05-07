@@ -55,16 +55,19 @@ func Map(mapf func(string,string) []KeyValue,
 		oname :="mr-"+strconv.Itoa(WorkId)+"-"+strconv.Itoa(index)
 		fmt.Printf("%v\n",oname)
 		ofile, _ := os.Create(oname)
+		/*TODO: change to a json file format*/
 		for i :=0; i < len(intermediate[index]); i++{
 			fmt.Fprintf(ofile, "%v %v\n", intermediate[index][i].Key, intermediate[index][i].Value)
 		}
 		ofile.Close()
 	}
 }
-func Reduce(reducef func(string,string) []KeyValue,
+func Reduce(reducef func(string,[]string) string,
 	files []string,
+	WorkId int,
 	nReduce int){
-
+	for index :=0;index < len(files);index++{
+	}
 }
 //
 // main/mrworker.go calls this function.
@@ -110,7 +113,9 @@ func Worker(mapf func(string, string) []KeyValue,
 				asktask.HaveFinishWork = true
 				asktask.FinWorkId = reply.WorkId
 			} else if reply.WorkId>=len(envreply.Files) && reply.WorkId<(len(envreply.Files)+envreply.NReduce){
+				/*reduce task*/
 				fmt.Printf("get a reduce task and id is %v\n",reply.WorkId)
+				Reduce(reducef,envreply.Files,reply.WorkId,envreply.NReduce)
 				asktask.AskType=ask_type_fin
 				asktask.WorkerId = envreply.WorkerId
 				asktask.HaveFinishWork = true
