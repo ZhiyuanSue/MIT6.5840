@@ -9,6 +9,7 @@ import "io/ioutil"
 import "strconv"
 import "encoding/json"
 import "sort"
+import "time"
 
 //
 // Map functions return a slice of KeyValue.
@@ -66,7 +67,6 @@ func Map(mapf func(string,string) []KeyValue,
 		oname :="mr-"+strconv.Itoa(WorkId)+"-"+strconv.Itoa(index)
 		// fmt.Printf("%v\n",oname)
 		ofile, _ := os.Create(oname)
-		/*TODO: change to a json file format*/
 		enc := json.NewEncoder(ofile)
   		for i :=0; i < len(intermediate[index]); i++ {
     		err :=enc.Encode(intermediate[index][i])
@@ -82,7 +82,6 @@ func Reduce(reducef func(string,[]string) string,
 	WorkId int,
 	nReduce int){
 	intermediate := []KeyValue{}
-	sorted_intermediate := []KeyValue{}
 	oname := "mr-out-"+strconv.Itoa(WorkId-len(files))
 	ofile, _ := os.Create(oname)
 	// fmt.Printf("output %v\n",oname)
@@ -107,11 +106,17 @@ func Reduce(reducef func(string,[]string) string,
 		for j < len(intermediate) && intermediate[j].Key == intermediate[i].Key {
 			j++
 		}
-		sorted_intermediate=append(sorted_intermediate,KeyValue{intermediate[i].Key,strconv.Itoa(j-i)})
+		values := []string{}
+		for k := i; k < j; k++ {
+			values = append(values, intermediate[k].Value)
+		}
+		
+		output := reducef(intermediate[i].Key, values)
+
+		// this is the correct format for each line of Reduce output.
+		fmt.Fprintf(ofile, "%v %v\n", intermediate[i].Key, output)
+
 		i = j
-	}
-	for i :=0;i<len(sorted_intermediate);i++{
-		fmt.Fprintf(ofile, "%v %v\n", sorted_intermediate[i].Key, sorted_intermediate[i].Value)
 	}
 	ofile.Close()
 }
@@ -143,6 +148,7 @@ func Worker(mapf func(string, string) []KeyValue,
 		if ok {
 			if reply.WorkId == -1{
 				// fmt.Printf("get a wait task\n")
+				time.Sleep(time.Second)
 				asktask.AskType = ask_type_ask
 				asktask.WorkerId = envreply.WorkerId
 				asktask.FinWorkId = -1
@@ -152,7 +158,7 @@ func Worker(mapf func(string, string) []KeyValue,
 				return
 			} else if reply.WorkId>=0 && reply.WorkId < len(envreply.Files){
 				/*map task*/
-				fmt.Printf("get a map task and id is %v\n",reply.WorkId)
+				// fmt.Printf("get a map task and id is %v\n",reply.WorkId)
 				Map(mapf,envreply.Files[reply.WorkId],reply.WorkId,envreply.NReduce)
 				asktask.AskType=ask_type_fin
 				asktask.WorkerId = envreply.WorkerId
@@ -160,7 +166,7 @@ func Worker(mapf func(string, string) []KeyValue,
 				asktask.FinWorkId = reply.WorkId
 			} else if reply.WorkId>=len(envreply.Files) && reply.WorkId<(len(envreply.Files)+envreply.NReduce){
 				/*reduce task*/
-				fmt.Printf("get a reduce task and id is %v\n",reply.WorkId)
+				// fmt.Printf("get a reduce task and id is %v\n",reply.WorkId)
 				Reduce(reducef,envreply.Files,reply.WorkId,envreply.NReduce)
 				asktask.AskType=ask_type_fin
 				asktask.WorkerId = envreply.WorkerId
