@@ -7,7 +7,8 @@ import "hash/fnv"
 import "os"
 import "io/ioutil"
 import "strconv"
-
+import "encoding/json"
+import "sort"
 
 //
 // Map functions return a slice of KeyValue.
@@ -16,6 +17,16 @@ type KeyValue struct {
 	Key   string
 	Value string
 }
+
+
+// for sorting by key.
+type ByKey []KeyValue
+
+// for sorting by key.
+func (a ByKey) Len() int           { return len(a) }
+func (a ByKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
+
 
 //
 // use ihash(key) % NReduce to choose the reduce
@@ -56,8 +67,12 @@ func Map(mapf func(string,string) []KeyValue,
 		fmt.Printf("%v\n",oname)
 		ofile, _ := os.Create(oname)
 		/*TODO: change to a json file format*/
-		for i :=0; i < len(intermediate[index]); i++{
-			fmt.Fprintf(ofile, "%v %v\n", intermediate[index][i].Key, intermediate[index][i].Value)
+		enc := json.NewEncoder(ofile)
+  		for i :=0; i < len(intermediate[index]); i++ {
+    		err :=enc.Encode(intermediate[index][i])
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
 		ofile.Close()
 	}
@@ -66,8 +81,39 @@ func Reduce(reducef func(string,[]string) string,
 	files []string,
 	WorkId int,
 	nReduce int){
+	intermediate := []KeyValue{}
+	sorted_intermediate := []KeyValue{}
+	oname := "mr-out-"+strconv.Itoa(WorkId-len(files))
+	ofile, _ := os.Create(oname)
+	fmt.Printf("output %v\n",oname)
 	for index :=0;index < len(files);index++{
+		iname := "mr-"+strconv.Itoa(index)+"-"+strconv.Itoa(WorkId-len(files))
+		fmt.Printf("%v\n",iname)
+		ifile, _ := os.Open(iname)
+		dec := json.NewDecoder(ifile)
+		for {
+			var kv KeyValue
+			if err := dec.Decode(&kv); err != nil {
+			  break
+			}
+			intermediate=append(intermediate,kv)
+		}
+		ifile.Close()
 	}
+	sort.Sort(ByKey(intermediate))
+	i := 0
+	for i < len(intermediate) {
+		j := i + 1
+		for j < len(intermediate) && intermediate[j].Key == intermediate[i].Key {
+			j++
+		}
+		sorted_intermediate=append(sorted_intermediate,KeyValue{intermediate[i].Key,strconv.Itoa(j-i)})
+		i = j
+	}
+	for i :=0;i<len(sorted_intermediate);i++{
+		fmt.Fprintf(ofile, "%v %v\n", sorted_intermediate[i].Key, sorted_intermediate[i].Value)
+	}
+	ofile.Close()
 }
 //
 // main/mrworker.go calls this function.
