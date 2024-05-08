@@ -64,7 +64,7 @@ func Map(mapf func(string,string) []KeyValue,
 	/*TODO:before we try to write in the file,we need to check whether the worker for this work is me*/
 	for index :=0;index < nReduce;index++{
 		oname :="mr-"+strconv.Itoa(WorkId)+"-"+strconv.Itoa(index)
-		fmt.Printf("%v\n",oname)
+		// fmt.Printf("%v\n",oname)
 		ofile, _ := os.Create(oname)
 		/*TODO: change to a json file format*/
 		enc := json.NewEncoder(ofile)
@@ -85,10 +85,10 @@ func Reduce(reducef func(string,[]string) string,
 	sorted_intermediate := []KeyValue{}
 	oname := "mr-out-"+strconv.Itoa(WorkId-len(files))
 	ofile, _ := os.Create(oname)
-	fmt.Printf("output %v\n",oname)
+	// fmt.Printf("output %v\n",oname)
 	for index :=0;index < len(files);index++{
 		iname := "mr-"+strconv.Itoa(index)+"-"+strconv.Itoa(WorkId-len(files))
-		fmt.Printf("%v\n",iname)
+		// fmt.Printf("%v\n",iname)
 		ifile, _ := os.Open(iname)
 		dec := json.NewDecoder(ifile)
 		for {
@@ -125,8 +125,8 @@ func Worker(mapf func(string, string) []KeyValue,
 	envreply := AskEnvReply{}
 	ok := call("Coordinator.GetEnv",&askenv,&envreply)
 	if ok{
-		fmt.Printf("nReduce %v \nfiles %v\n",envreply.NReduce,envreply.Files)
-		fmt.Printf("my worker id is %v\n",envreply.WorkerId)
+		// fmt.Printf("nReduce %v \nfiles %v\n",envreply.NReduce,envreply.Files)
+		// fmt.Printf("my worker id is %v\n",envreply.WorkerId)
 	} else {
 		fmt.Println("connect to server error,have finished all work\n")
 		return
@@ -142,13 +142,13 @@ func Worker(mapf func(string, string) []KeyValue,
 		ok := call("Coordinator.AssignTask",&asktask,&reply)
 		if ok {
 			if reply.WorkId == -1{
-				fmt.Printf("get a wait task\n")
+				// fmt.Printf("get a wait task\n")
 				asktask.AskType = ask_type_ask
 				asktask.WorkerId = envreply.WorkerId
 				asktask.FinWorkId = -1
 				asktask.HaveFinishWork = false
 			} else if reply.WorkId == -2{
-				fmt.Printf("get a finish task\n")
+				// fmt.Printf("get a finish task\n")
 				return
 			} else if reply.WorkId>=0 && reply.WorkId < len(envreply.Files){
 				/*map task*/

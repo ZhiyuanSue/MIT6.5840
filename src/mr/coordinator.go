@@ -68,7 +68,7 @@ func (c *Coordinator) AssignTask(args *AskTaskArgs, reply *AskTaskReply) error{
 			c.CoorState = coor_state_finish
 		}
 	}
-	fmt.Printf("current state is %v\n",c.CoorState)
+	// fmt.Printf("current state is %v\n",c.CoorState)
 	/*don't use else if*/
 	if c.CoorState == coor_state_finish{
 		reply.WorkId = -2
@@ -96,8 +96,10 @@ func (c *Coordinator) AssignTask(args *AskTaskArgs, reply *AskTaskReply) error{
 		}
 	}
 	reply.WorkId=not_assigned_task
-	c.work_pool[not_assigned_task].have_assigned=true
-	c.work_pool[not_assigned_task].assigned_worker=args.WorkerId
+	if not_assigned_task!=-1{
+		c.work_pool[not_assigned_task].have_assigned=true
+		c.work_pool[not_assigned_task].assigned_worker=args.WorkerId
+	}
 	return nil
 }
 //
@@ -180,6 +182,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		tmp_work.assign_start_time=0
 		c.work_pool = append(c.work_pool,tmp_work)
 	}
+	fmt.Printf("finish init server\n")
 	c.server()
 	return &c
 }
