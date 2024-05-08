@@ -1,6 +1,6 @@
 package mr
 
-import "fmt"
+// import "fmt"
 import "log"
 import "net"
 import "os"
@@ -40,7 +40,7 @@ func (c *Coordinator) GetEnv(ask *AskEnv,reply *AskEnvReply) error{
 	return nil
 }
 func (c *Coordinator) AssignTask(args *AskTaskArgs, reply *AskTaskReply) error{
-	fmt.Printf("get a ask requset type %v finworkid %v havefinishwork %v\n",args.AskType,args.FinWorkId,args.HaveFinishWork)
+	// fmt.Printf("get a ask requset type %v finworkid %v havefinishwork %v\n",args.AskType,args.FinWorkId,args.HaveFinishWork)
 	/*update work state*/
 	if args.HaveFinishWork == true{
 		c.work_pool[args.FinWorkId].have_finished=true
@@ -202,7 +202,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		tmp_work.assign_start_time=time.Now()
 		c.work_pool = append(c.work_pool,tmp_work)
 	}
-	fmt.Printf("finish init server\n")
+	// fmt.Printf("finish init server\n")
 	c.server()
 	return &c
 }
