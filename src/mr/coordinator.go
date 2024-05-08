@@ -6,12 +6,13 @@ import "net"
 import "os"
 import "net/rpc"
 import "net/http"
+import "time"
 
 type work struct{
 	have_assigned bool
 	have_finished bool
 	assigned_worker int
-	assign_start_time int
+	assign_start_time time.Time
 }
 
 type coor_state int
@@ -85,6 +86,15 @@ func (c *Coordinator) AssignTask(args *AskTaskArgs, reply *AskTaskReply) error{
 			if c.work_pool[i].have_assigned==false{
 				not_assigned_task=i
 				break
+			}else if c.work_pool[i].have_finished == false{
+				/*have assigned but not finished, check time*/
+				curr_time :=time.Now()
+				timeout,_	:=time.ParseDuration("10s")
+				deadline := c.work_pool[i].assign_start_time.Add(timeout)
+				if curr_time.After(deadline){
+					not_assigned_task=i
+					break
+				}
 			}
 		}
 	}else if c.CoorState == coor_state_reduce{
@@ -92,6 +102,15 @@ func (c *Coordinator) AssignTask(args *AskTaskArgs, reply *AskTaskReply) error{
 			if c.work_pool[i].have_assigned==false{
 				not_assigned_task=i
 				break
+			}else if c.work_pool[i].have_finished == false{
+				/*have assigned but not finished, check time*/
+				curr_time :=time.Now()
+				timeout,_	:=time.ParseDuration("10s")
+				deadline := c.work_pool[i].assign_start_time.Add(timeout)
+				if curr_time.After(deadline){
+					not_assigned_task=i
+					break
+				}
 			}
 		}
 	}
@@ -99,6 +118,7 @@ func (c *Coordinator) AssignTask(args *AskTaskArgs, reply *AskTaskReply) error{
 	if not_assigned_task!=-1{
 		c.work_pool[not_assigned_task].have_assigned=true
 		c.work_pool[not_assigned_task].assigned_worker=args.WorkerId
+		c.work_pool[not_assigned_task].assign_start_time=time.Now()
 	}
 	return nil
 }
@@ -171,7 +191,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		tmp_work.have_assigned=false
 		tmp_work.have_finished=false
 		tmp_work.assigned_worker=-1
-		tmp_work.assign_start_time=0
+		tmp_work.assign_start_time=time.Now()
 		c.work_pool = append(c.work_pool,tmp_work)
 	}
 	for i :=len(files); i<(len(files) + nReduce);i++{
@@ -179,7 +199,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		tmp_work.have_assigned=false
 		tmp_work.have_finished=false
 		tmp_work.assigned_worker=-1
-		tmp_work.assign_start_time=0
+		tmp_work.assign_start_time=time.Now()
 		c.work_pool = append(c.work_pool,tmp_work)
 	}
 	fmt.Printf("finish init server\n")
