@@ -7,6 +7,8 @@ import "os"
 import "net/rpc"
 import "net/http"
 import "time"
+import "fmt"
+import "sync"
 
 type work struct{
 	have_assigned bool
@@ -24,6 +26,7 @@ const (
 
 type Coordinator struct {
 	// Your definitions here.
+	coor_lock sync.Mutex
 	CoorState coor_state
 	files []string
 	nReduce int
@@ -36,12 +39,29 @@ func (c *Coordinator) GetEnv(ask *AskEnv,reply *AskEnvReply) error{
 	reply.Files=c.files
 	reply.NReduce=c.nReduce
 	reply.WorkerId=c.worker_num
+	c.coor_lock.Lock()
 	c.worker_num++
+	c.coor_lock.Unlock()
 	return nil
 }
+func (c *Coordinator) WorkCurWorker(ask *AskWorkCurWorker, reply *AskWorkCurWorkerReply) error{
+	c.coor_lock.Lock()
+	if c.work_pool[ask.WorkId].assigned_worker != ask.WorkerId{
+		reply.Res = false
+	}else{
+		reply.Res = true
+	}
+	c.coor_lock.Unlock()
+	return nil
+}
+
 func (c *Coordinator) AssignTask(args *AskTaskArgs, reply *AskTaskReply) error{
 	// fmt.Printf("get a ask requset type %v finworkid %v havefinishwork %v\n",args.AskType,args.FinWorkId,args.HaveFinishWork)
+	// if args.HaveFinishWork == true{
+	// 	fmt.Printf("get a finish work info %v from worker %v\n",args.FinWorkId,args.WorkerId)
+	// }
 	/*update work state*/
+	c.coor_lock.Lock()
 	if args.HaveFinishWork == true{
 		c.work_pool[args.FinWorkId].have_finished=true
 	}
@@ -93,6 +113,7 @@ func (c *Coordinator) AssignTask(args *AskTaskArgs, reply *AskTaskReply) error{
 				deadline := c.work_pool[i].assign_start_time.Add(timeout)
 				if curr_time.After(deadline){
 					not_assigned_task=i
+					// fmt.Printf("find a work %v outof deadline state is map ask task is %v\n",i,args.WorkerId)
 					break
 				}
 			}
@@ -109,6 +130,7 @@ func (c *Coordinator) AssignTask(args *AskTaskArgs, reply *AskTaskReply) error{
 				deadline := c.work_pool[i].assign_start_time.Add(timeout)
 				if curr_time.After(deadline){
 					not_assigned_task=i
+					// fmt.Printf("find a work %v outof deadline state is reduce ask task is %v\n",i,args.WorkerId)
 					break
 				}
 			}
@@ -119,7 +141,9 @@ func (c *Coordinator) AssignTask(args *AskTaskArgs, reply *AskTaskReply) error{
 		c.work_pool[not_assigned_task].have_assigned=true
 		c.work_pool[not_assigned_task].assigned_worker=args.WorkerId
 		c.work_pool[not_assigned_task].assign_start_time=time.Now()
+		// fmt.Printf("assign the work %v to worker %v\n",not_assigned_task,args.WorkerId)
 	}
+	c.coor_lock.Unlock()
 	return nil
 }
 //
@@ -202,7 +226,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		tmp_work.assign_start_time=time.Now()
 		c.work_pool = append(c.work_pool,tmp_work)
 	}
-	// fmt.Printf("finish init server\n")
+	fmt.Printf("finish init server,file len is %v\n",len(files))
 	c.server()
 	return &c
 }

@@ -52,6 +52,14 @@ type AskEnvReply struct{
 	WorkerId	int
 }
 
+type AskWorkCurWorker struct{
+	WorkId int
+	WorkerId int
+}
+type AskWorkCurWorkerReply struct{
+	Res bool
+}
+
 // Cook up a unique-ish UNIX-domain socket name
 // in /var/tmp, for the coordinator.
 // Can't use the current directory since

@@ -9,7 +9,7 @@ import "io/ioutil"
 import "strconv"
 import "encoding/json"
 import "sort"
-import "time"
+// import "time"
 
 //
 // Map functions return a slice of KeyValue.
@@ -62,7 +62,6 @@ func Map(mapf func(string,string) []KeyValue,
 		index := ihash(key) % nReduce
 		intermediate[index]=append(intermediate[index],kva[i])
 	}
-	/*TODO:before we try to write in the file,we need to check whether the worker for this work is me*/
 	for index :=0;index < nReduce;index++{
 		oname :="mr-"+strconv.Itoa(WorkId)+"-"+strconv.Itoa(index)
 		// fmt.Printf("%v\n",oname)
@@ -80,6 +79,7 @@ func Map(mapf func(string,string) []KeyValue,
 func Reduce(reducef func(string,[]string) string,
 	files []string,
 	WorkId int,
+	WorkerId int,
 	nReduce int){
 	intermediate := []KeyValue{}
 	oname := "mr-out-"+strconv.Itoa(WorkId-len(files))
@@ -100,25 +100,38 @@ func Reduce(reducef func(string,[]string) string,
 		ifile.Close()
 	}
 	sort.Sort(ByKey(intermediate))
-	i := 0
-	for i < len(intermediate) {
-		j := i + 1
-		for j < len(intermediate) && intermediate[j].Key == intermediate[i].Key {
-			j++
-		}
-		values := []string{}
-		for k := i; k < j; k++ {
-			values = append(values, intermediate[k].Value)
-		}
-		
-		output := reducef(intermediate[i].Key, values)
 
-		// this is the correct format for each line of Reduce output.
-		fmt.Fprintf(ofile, "%v %v\n", intermediate[i].Key, output)
+	/*before we try to write in the file,we need to check whether the worker for this work is me*/
+	askcur := AskWorkCurWorker{}
+	askreply := AskWorkCurWorkerReply{}
+	askcur.WorkId = WorkId
+	askcur.WorkerId = WorkerId
+	ok := call("Coordinator.WorkCurWorker",&askcur,&askreply)
+	if ok && askreply.Res{
+		i := 0
+		for i < len(intermediate) {
+			j := i + 1
+			for j < len(intermediate) && intermediate[j].Key == intermediate[i].Key {
+				j++
+			}
+			values := []string{}
+			for k := i; k < j; k++ {
+				values = append(values, intermediate[k].Value)
+			}
+			
+			output := reducef(intermediate[i].Key, values)
 
-		i = j
+			// this is the correct format for each line of Reduce output.
+			fmt.Fprintf(ofile, "%v %v\n", intermediate[i].Key, output)
+
+			i = j
+		}
+		ofile.Close()
+	}else{
+		fmt.Printf("current work is not assigned to me ,something wrong\n")
+		return
 	}
-	ofile.Close()
+	// fmt.Printf("have finish work %v\n",WorkId)
 }
 //
 // main/mrworker.go calls this function.
@@ -148,7 +161,7 @@ func Worker(mapf func(string, string) []KeyValue,
 		if ok {
 			if reply.WorkId == -1{
 				// fmt.Printf("get a wait task\n")
-				time.Sleep(time.Second)
+				// time.Sleep(time.Second)
 				asktask.AskType = ask_type_ask
 				asktask.WorkerId = envreply.WorkerId
 				asktask.FinWorkId = -1
@@ -167,7 +180,7 @@ func Worker(mapf func(string, string) []KeyValue,
 			} else if reply.WorkId>=len(envreply.Files) && reply.WorkId<(len(envreply.Files)+envreply.NReduce){
 				/*reduce task*/
 				// fmt.Printf("get a reduce task and id is %v\n",reply.WorkId)
-				Reduce(reducef,envreply.Files,reply.WorkId,envreply.NReduce)
+				Reduce(reducef,envreply.Files,reply.WorkId,envreply.WorkerId,envreply.NReduce)
 				asktask.AskType=ask_type_fin
 				asktask.WorkerId = envreply.WorkerId
 				asktask.HaveFinishWork = true
