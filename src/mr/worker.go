@@ -128,7 +128,7 @@ func Reduce(reducef func(string,[]string) string,
 		}
 		ofile.Close()
 	}else{
-		fmt.Printf("current work is not assigned to me ,something wrong\n")
+		// fmt.Printf("current work is not assigned to me ,something wrong\n")
 		return
 	}
 	// fmt.Printf("have finish work %v\n",WorkId)
@@ -146,7 +146,7 @@ func Worker(mapf func(string, string) []KeyValue,
 		// fmt.Printf("nReduce %v \nfiles %v\n",envreply.NReduce,envreply.Files)
 		// fmt.Printf("my worker id is %v\n",envreply.WorkerId)
 	} else {
-		fmt.Println("connect to server error,have finished all work\n")
+		//fmt.Println("connect to server error,have finished all work\n")
 		return
 	}
 	// Your worker implementation here.
@@ -186,11 +186,11 @@ func Worker(mapf func(string, string) []KeyValue,
 				asktask.HaveFinishWork = true
 				asktask.FinWorkId = reply.WorkId
 			}else{
-				fmt.Printf("some error have happened from server,exit\n")
+				// fmt.Printf("some error have happened from server,exit\n")
 				return
 			}
 		} else {
-			fmt.Println("connect to server error,have finished all work\n")
+			// fmt.Println("connect to server error,have finished all work\n")
 			return
 		}
 	}
