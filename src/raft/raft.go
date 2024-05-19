@@ -51,7 +51,7 @@ type ApplyMsg struct {
 }
 
 type LogEntry struct {
-
+	Term	int
 }
 
 type RaftState int
@@ -95,10 +95,10 @@ func (rf *Raft) GetState() (int, bool) {
 	// Your code here (2A).
 	isleader = false
 	rf.mu.Lock()
-	if rf.RaftState == RaftLeader{
+	if rf.state == RaftLeader{
 		isleader = true
 	}
-	term = currentTerm
+	term = rf.currentTerm
 	rf.mu.Unlock()
 
 	return term, isleader
@@ -218,22 +218,43 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 // that the caller passes the address of the reply struct with &, not
 // the struct itself.
 
-func (rf *Raft) sendRequestVoteAll()
-{
+func (rf *Raft) sendRequestVoteAll(){
 	// update the infos
 	rf.mu.Lock()
 	// write new info
 	rf.currentTerm+=1
 	rf.RecvHeatBeat=true
-	rf.RaftState=RaftCandidate
-	// read info from the rf
+	rf.state=RaftCandidate
+	// read info from the rf,for the information might change
+	cur_Term := rf.currentTerm
+	Last_Log_Index := len(rf.Log)-1
+	Last_Log_Term := -1
+	if Last_Log_Index != -1{
+		Last_Log_Term = rf.Log[len(rf.Log)-1].Term
+	}
 	rf.mu.Unlock()
 
 	for i :=0;i<len(rf.peers);i++{
-		if i!=me{
-
+		if i!=rf.me{
+			args := RequestVoteArgs{
+				Term	:cur_Term,
+				CandidateId	:	rf.me,
+				LastLogIndex :	Last_Log_Index,
+				LastLogTerm	:	Last_Log_Term,
+			}
+			go rf.CollectVoteRes(i,&args)	// we have to send all the infos to other server ,so we must use other thread ,not a sequence way
 		}
 	}
+}
+func (rf *Raft) CollectVoteRes(server int, args *RequestVoteArgs){
+	reply := RequestVoteReply{}
+	ok	:= rf.sendRequestVote(server,args,&reply)
+	if !ok{
+		return
+	}
+	rf.mu.Lock()
+
+	rf.mu.Unlock()
 }
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
@@ -288,13 +309,11 @@ func (rf *Raft) ticker() {
 
 		// Your code here (2A)
 		// Check if a leader election should be started.
-		cur_time := Time.now()
 		rf.mu.Lock()
-		if rf.RaftState == RaftFollower || rf.RaftState == RaftCandidate{
+		if rf.state == RaftFollower || rf.state == RaftCandidate{
 			if rf.RecvHeatBeat == false {
-				go sendRequestVoteAll()
-			}
-			else{
+				go rf.sendRequestVoteAll()
+			}else{
 				rf.RecvHeatBeat = false
 			}
 		}
@@ -328,7 +347,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.VotedFor=-1
 	rf.CommitIndex=-1
 	rf.LastApplied=-1
-	rf.last_heatbeat_time=Time.now()
+	rf.RecvHeatBeat=false
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
