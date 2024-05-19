@@ -50,6 +50,16 @@ type ApplyMsg struct {
 	SnapshotIndex int
 }
 
+type LogEntry struct {
+
+}
+
+type RaftState int
+const (
+	RaftLeader RaftState = 0
+	RaftFollower	RaftState = 1
+	RaftCandidate	RaftState = 2
+)
 // A Go object implementing a single Raft peer.
 type Raft struct {
 	mu        sync.Mutex          // Lock to protect shared access to this peer's state
@@ -61,6 +71,18 @@ type Raft struct {
 	// Your data here (2A, 2B, 2C).
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
+	state     RaftState
+
+	// Persistent state on all servers
+	currentTerm	int
+	VotedFor	int
+	Log	[]LogEntry
+	// Volatile state on all servers
+	CommitIndex	int
+	LastApplied	int
+	// Volatile state on leaders
+	NextIndex	[]int
+	MatchIndex	[]int
 
 }
 
@@ -128,12 +150,31 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 // field names must start with capital letters!
 type RequestVoteArgs struct {
 	// Your data here (2A, 2B).
+	Term	int
+	CandidateId	int
+	LastLogIndex	int
+	LastLogTerm	int
 }
 
 // example RequestVote RPC reply structure.
 // field names must start with capital letters!
 type RequestVoteReply struct {
 	// Your data here (2A).
+	Term	int
+	VoteGranted	bool
+}
+// heartbeat
+type AppendEntriesArgs	struct {
+	Term	int
+	LeaderId	int
+	PrevLogIndex	int
+	PrevLogTerm	int
+	Entries 	[]LogEntry
+	LeaderCommit int
+}
+type AppendEntriesReply	struct	{
+	Term	int
+	success	bool
 }
 
 // example RequestVote RPC handler.
@@ -247,6 +288,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.me = me
 
 	// Your initialization code here (2A, 2B, 2C).
+	rf.state = RaftFollower
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
