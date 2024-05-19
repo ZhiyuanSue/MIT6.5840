@@ -72,7 +72,7 @@ type Raft struct {
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
 	state     RaftState
-
+	receive_heatbeat	bool
 	// Persistent state on all servers
 	currentTerm	int
 	VotedFor	int
@@ -93,6 +93,14 @@ func (rf *Raft) GetState() (int, bool) {
 	var term int
 	var isleader bool
 	// Your code here (2A).
+	isleader = false
+	rf.mu.Lock()
+	if rf.RaftState == RaftLeader{
+		isleader = true
+	}
+	term = currentTerm
+	rf.mu.Unlock()
+
 	return term, isleader
 }
 
@@ -180,6 +188,7 @@ type AppendEntriesReply	struct	{
 // example RequestVote RPC handler.
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
+	rf.receive_heatbeat=true
 }
 
 // example code to send a RequestVote RPC to a server.
@@ -262,7 +271,21 @@ func (rf *Raft) ticker() {
 
 		// Your code here (2A)
 		// Check if a leader election should be started.
+		switch	rf.RaftState {
 
+		}
+		if rf.receive_heatbeat{
+			rf.receive_heatbeat=false	// clear the heartbeat
+		}else{
+			switch rf.RaftState {
+			case RaftLeader:
+				
+			case RaftFollower:
+				// start vote
+			case RaftCandidate:
+				
+			}
+		}
 
 		// pause for a random amount of time between 50 and 350
 		// milliseconds.
@@ -289,6 +312,10 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	// Your initialization code here (2A, 2B, 2C).
 	rf.state = RaftFollower
+	rf.currentTerm=-1
+	rf.VotedFor=-1
+	rf.CommitIndex=-1
+	rf.LastApplied=-1
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
