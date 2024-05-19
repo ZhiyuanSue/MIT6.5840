@@ -72,7 +72,7 @@ type Raft struct {
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
 	state     RaftState
-	receive_heatbeat	bool
+	RecvHeatBeat	bool
 	// Persistent state on all servers
 	currentTerm	int
 	VotedFor	int
@@ -188,7 +188,6 @@ type AppendEntriesReply	struct	{
 // example RequestVote RPC handler.
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
-	rf.receive_heatbeat=true
 }
 
 // example code to send a RequestVote RPC to a server.
@@ -218,6 +217,24 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 // capitalized all field names in structs passed over RPC, and
 // that the caller passes the address of the reply struct with &, not
 // the struct itself.
+
+func (rf *Raft) sendRequestVoteAll()
+{
+	// update the infos
+	rf.mu.Lock()
+	// write new info
+	rf.currentTerm+=1
+	rf.RecvHeatBeat=true
+	rf.RaftState=RaftCandidate
+	// read info from the rf
+	rf.mu.Unlock()
+
+	for i :=0;i<len(rf.peers);i++{
+		if i!=me{
+
+		}
+	}
+}
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
 	return ok
@@ -271,22 +288,17 @@ func (rf *Raft) ticker() {
 
 		// Your code here (2A)
 		// Check if a leader election should be started.
-		switch	rf.RaftState {
-
-		}
-		if rf.receive_heatbeat{
-			rf.receive_heatbeat=false	// clear the heartbeat
-		}else{
-			switch rf.RaftState {
-			case RaftLeader:
-				
-			case RaftFollower:
-				// start vote
-			case RaftCandidate:
-				
+		cur_time := Time.now()
+		rf.mu.Lock()
+		if rf.RaftState == RaftFollower || rf.RaftState == RaftCandidate{
+			if rf.RecvHeatBeat == false {
+				go sendRequestVoteAll()
+			}
+			else{
+				rf.RecvHeatBeat = false
 			}
 		}
-
+		rf.mu.Unlock()
 		// pause for a random amount of time between 50 and 350
 		// milliseconds.
 		ms := 50 + (rand.Int63() % 300)
@@ -316,6 +328,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.VotedFor=-1
 	rf.CommitIndex=-1
 	rf.LastApplied=-1
+	rf.last_heatbeat_time=Time.now()
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
