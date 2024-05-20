@@ -72,7 +72,7 @@ type Raft struct {
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
 	state     RaftState
-	RecvHeatBeat	bool
+	RecvHeartBeat	bool
 	CollectVote	int
 	// Persistent state on all servers
 	currentTerm	int
@@ -173,7 +173,7 @@ type RequestVoteReply struct {
 	VoteGranted	bool
 }
 // heartbeat
-type AppendEntriesArgs	struct {
+type AppendEntriesArgs struct {
 	Term	int
 	LeaderId	int
 	PrevLogIndex	int
@@ -183,7 +183,7 @@ type AppendEntriesArgs	struct {
 }
 type AppendEntriesReply	struct	{
 	Term	int
-	success	bool
+	Success	bool
 }
 
 // example RequestVote RPC handler.
@@ -202,17 +202,17 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		if Last_Log_Index != -1{
 			Last_Log_Term = rf.Log[len(rf.Log)-1].Term
 		}
-		if Last_Log_Index<=args.LastLogIndex && Last_Log_Term<=args.LastLogTerm{
+		if Last_Log_Index<=args.LastLogIndex && Last_Log_Term==args.LastLogTerm{
 			rf.currentTerm=args.Term
 			rf.state=RaftFollower
 			rf.VotedFor=args.CandidateId
-			rf.RecvHeatBeat=true	// let this vote as the new leader's first heatbeat
+			rf.RecvHeartBeat=true	// let this vote as the new leader's first heartbeat
 			reply.Term=args.Term
 			reply.VoteGranted=true
 			rf.mu.Unlock()
 			return
 		}
-	}else{
+	}else if args.Term == rf.currentTerm{
 		// if the term is equal to current term ,generally the vote for must not be -1
 		if rf.VotedFor == args.CandidateId{
 			Last_Log_Index := len(rf.Log)-1
@@ -220,11 +220,11 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 			if Last_Log_Index != -1{
 				Last_Log_Term = rf.Log[len(rf.Log)-1].Term
 			}
-			if Last_Log_Index<=args.LastLogIndex && Last_Log_Term<=args.LastLogTerm{
+			if Last_Log_Index<=args.LastLogIndex && Last_Log_Term==args.LastLogTerm{
 				rf.currentTerm=args.Term
 				rf.state=RaftFollower
 				rf.VotedFor=args.CandidateId
-				rf.RecvHeatBeat=true	// let this vote as the new leader's first heatbeat
+				rf.RecvHeartBeat=true	// let this vote as the new leader's first heartbeat
 				reply.Term=args.Term
 				reply.VoteGranted=true
 				rf.mu.Unlock()
@@ -266,11 +266,12 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 // the struct itself.
 
 func (rf *Raft) sendRequestVoteAll(){
+	// fmt.Printf("%v start vote term %v\n",rf.me,rf.currentTerm);
 	// update the infos
 	rf.mu.Lock()
 	// write new info
 	rf.currentTerm+=1
-	rf.RecvHeatBeat=true
+	rf.RecvHeartBeat=true
 	rf.state=RaftCandidate
 	rf.CollectVote=1	// vote to me
 	rf.VotedFor = rf.me
@@ -313,7 +314,7 @@ func (rf *Raft) CollectVoteRes(server int, args *RequestVoteArgs){
 		rf.mu.Unlock()
 		return
 	}
-	if rf.CollectVote > len(rf.peers)/2 {	// already be voted as leader and no need for another heatbeat thread
+	if rf.CollectVote > len(rf.peers)/2 {	// already be voted as leader and no need for another heartbeat thread
 		rf.mu.Unlock()
 		return
 	}
@@ -323,20 +324,88 @@ func (rf *Raft) CollectVoteRes(server int, args *RequestVoteArgs){
 		rf.state = RaftLeader
 	}
 	rf.mu.Unlock()
-	go rf.sendHeatBeats()
+	go rf.sendHeartBeatsAll()
 }
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
 	return ok
 }
-// HeatBeats
-func (rf *Raft) sendHeatBeats(){
+// HeartBeats
+func (rf *Raft) sendHeartBeatsAll(){
 	// time should be the same as the ticker
+	for rf.killed() == false && rf.state == RaftLeader {
+		// fmt.Printf("%v send heartbeat\n",rf.me);
+		rf.mu.Lock()
+		cur_Term := rf.currentTerm
+		commit_idx := rf.CommitIndex
+		rf.mu.Unlock()
 
+		for i :=0;i<len(rf.peers);i++{
+			if i!=rf.me{
+				args := AppendEntriesArgs{
+					Term:	cur_Term,
+					LeaderId:	rf.me,
+					PrevLogIndex:	-1,
+					PrevLogTerm:	-1,
+					Entries:	nil,
+					LeaderCommit:	commit_idx,
+				}
+				go rf.sendHeartBeat(i,&args)	// also use other threads to deal with the 
+			}
+		}
+
+		ms := 100	//heartbeat RPCs no more than ten times per second.
+		time.Sleep(time.Duration(ms) * time.Millisecond)
+	}
 }
-// the heat beat is the same as the append entry,but just the log entries are empty
+func (rf *Raft) sendHeartBeat(server int, args *AppendEntriesArgs){
+	// fmt.Printf("send heart beat to %v\n",server)
+	reply := AppendEntriesReply{}
+	ok := rf.sendAppendEntries(server,args,&reply)
+	if !ok {
+		return
+	}
+	rf.mu.Lock()
+	// check self state
+	if rf.state != RaftLeader || rf.currentTerm!=args.Term {
+		// self might be elected as a leader at another term
+		// so we also need to check the term
+		rf.mu.Unlock()
+		return
+	}
+	if reply.Term > rf.currentTerm {
+		rf.currentTerm =  reply.Term
+		rf.state = RaftFollower
+	}
+	rf.mu.Unlock()
+}
+func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
+	ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
+	return ok
+}
+// the heart beat is the same as the append entry,but just the log entries are empty
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply){
+	// fmt.Printf("%v receive heart beat term %v cur term %v leader id is %v\n",rf.me,args.Term, rf.currentTerm,args.LeaderId)
+	rf.mu.Lock()
+	if args.Term < rf.currentTerm{
+		reply.Term = rf.currentTerm
+		reply.Success = false
+		rf.mu.Unlock()
+		return
+	}else if args.Term == rf.currentTerm{
+		// if empty log,just a heart beat
+		// else is 2B work
+	}else if args.Term > rf.currentTerm{
+		rf.currentTerm=args.Term
+		rf.state= RaftFollower
+		//if empty log, a heart beat from new leader
 
+		// else is 2B work
+	}
+	rf.RecvHeartBeat=true
+	reply.Term = rf.currentTerm
+	reply.Success = true
+	rf.mu.Unlock()
 }
 
 // the service using Raft (e.g. a k/v server) wants to start
@@ -388,16 +457,21 @@ func (rf *Raft) ticker() {
 		// Check if a leader election should be started.
 		rf.mu.Lock()
 		if rf.state == RaftFollower || rf.state == RaftCandidate{
-			if rf.RecvHeatBeat == false {
+			if rf.RecvHeartBeat == false {
+				// fmt.Printf("server %v find a timeout \n",rf.me)
 				go rf.sendRequestVoteAll()
 			}else{
-				rf.RecvHeatBeat = false
+				rf.RecvHeartBeat = false
 			}
 		}
 		rf.mu.Unlock()
 		// pause for a random amount of time between 50 and 350
 		// milliseconds.
-		ms := 50 + (rand.Int63() % 300)
+		ms := 150 + (rand.Int63() % 200)	
+		// the 2A has a warning of "warning: term changed even though there were no failures"
+		// if I use 10 times per second, the heartbeat should be 100 ms
+		// and only the time of election timeout larger then the 100 ms, that the timeout never happen
+		// so the ms must always larger then 100, so I change the 50-350 to 150-350 ms
 		time.Sleep(time.Duration(ms) * time.Millisecond)
 	}
 }
@@ -424,7 +498,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.VotedFor=-1
 	rf.CommitIndex=-1
 	rf.LastApplied=-1
-	rf.RecvHeatBeat=false
+	rf.RecvHeartBeat=false
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
