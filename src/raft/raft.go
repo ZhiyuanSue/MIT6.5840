@@ -323,6 +323,14 @@ func (rf *Raft) CollectVoteRes(server int, args *RequestVoteArgs){
 	if rf.CollectVote > len(rf.peers)/2 {
 		// fmt.Printf("me %v is voted for raft leader with collect %v term %v\n",rf.me,rf.CollectVote,rf.currentTerm)
 		rf.state = RaftLeader
+		// after every election，
+		// the nextIndex[] initialized with the leader's lastlogindex + 1
+		Next_Log_Index := len(rf.Log)
+		for i:=0;i<len(rf.peers);i++ {
+			rf.NextIndex[i]=Next_Log_Index
+			rf.MatchIndex[i]=0
+		}
+		// the matchIndex[] initialized with all 0
 	}
 	rf.mu.Unlock()
 	go rf.sendHeartBeatsAll()
@@ -430,6 +438,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	rf.mu.Lock()
 	if rf.killed() || rf.state != RaftLeader{
 		isLeader = false
+		rf.mu.Unlock()
 		return index, term, isLeader
 	}
 	rf.Log = append(rf.Log,LogEntry{
@@ -438,7 +447,6 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	})
 	index = len(rf.Log)-1
 	term = rf.currentTerm
-
 	rf.mu.Unlock()
 
 	return index, term, isLeader
@@ -512,7 +520,10 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.CommitIndex=-1
 	rf.LastApplied=-1
 	rf.RecvHeartBeat=false
-
+	for i:=0;i<len(peers);i++{
+		rf.NextIndex=append(rf.NextIndex,0)
+		rf.MatchIndex=append(rf.MatchIndex,0)
+	}
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
 
