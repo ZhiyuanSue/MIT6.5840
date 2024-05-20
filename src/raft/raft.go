@@ -23,7 +23,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
+	"fmt"
 	//	"6.5840/labgob"
 	"6.5840/labrpc"
 )
@@ -189,6 +189,52 @@ type AppendEntriesReply	struct	{
 // example RequestVote RPC handler.
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
+	rf.mu.Lock()
+	if args.Term<rf.currentTerm{
+		reply.Term = rf.currentTerm
+		reply.VoteGranted=false
+		rf.mu.Unlock()
+		return
+	}else if args.Term >rf.currentTerm{
+		// for the new term, VotedFor must be null in this term,vote it
+		Last_Log_Index := len(rf.Log)-1
+		Last_Log_Term := -1
+		if Last_Log_Index != -1{
+			Last_Log_Term = rf.Log[len(rf.Log)-1].Term
+		}
+		if Last_Log_Index<=args.LastLogIndex && Last_Log_Term<=args.LastLogTerm{
+			rf.currentTerm=args.Term
+			rf.state=RaftFollower
+			rf.VotedFor=args.CandidateId
+			rf.RecvHeatBeat=true	// let this vote as the new leader's first heatbeat
+			reply.Term=args.Term
+			reply.VoteGranted=true
+			rf.mu.Unlock()
+			return
+		}
+	}else{
+		// if the term is equal to current term ,generally the vote for must not be -1
+		if rf.VotedFor == args.CandidateId{
+			Last_Log_Index := len(rf.Log)-1
+			Last_Log_Term := -1
+			if Last_Log_Index != -1{
+				Last_Log_Term = rf.Log[len(rf.Log)-1].Term
+			}
+			if Last_Log_Index<=args.LastLogIndex && Last_Log_Term<=args.LastLogTerm{
+				rf.currentTerm=args.Term
+				rf.state=RaftFollower
+				rf.VotedFor=args.CandidateId
+				rf.RecvHeatBeat=true	// let this vote as the new leader's first heatbeat
+				reply.Term=args.Term
+				reply.VoteGranted=true
+				rf.mu.Unlock()
+				return
+			}
+		}
+	}
+	reply.Term=rf.currentTerm
+	reply.VoteGranted=false
+	rf.mu.Unlock()
 }
 
 // example code to send a RequestVote RPC to a server.
@@ -227,6 +273,7 @@ func (rf *Raft) sendRequestVoteAll(){
 	rf.RecvHeatBeat=true
 	rf.state=RaftCandidate
 	rf.CollectVote=1	// vote to me
+	rf.VotedFor = rf.me
 	// read info from the rf,for the information might change
 	cur_Term := rf.currentTerm
 	Last_Log_Index := len(rf.Log)-1
@@ -251,7 +298,7 @@ func (rf *Raft) sendRequestVoteAll(){
 func (rf *Raft) CollectVoteRes(server int, args *RequestVoteArgs){
 	reply := RequestVoteReply{}
 	ok	:= rf.sendRequestVote(server,args,&reply)
-	if !ok{
+	if !ok || reply.VoteGranted == false {
 		return
 	}
 	rf.mu.Lock()
@@ -272,6 +319,7 @@ func (rf *Raft) CollectVoteRes(server int, args *RequestVoteArgs){
 	}
 	rf.CollectVote +=1
 	if rf.CollectVote > len(rf.peers)/2 {
+		fmt.Printf("me %v is voted for raft leader with collect %v term %v\n",rf.me,rf.CollectVote,rf.currentTerm)
 		rf.state = RaftLeader
 	}
 	rf.mu.Unlock()
