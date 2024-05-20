@@ -73,6 +73,7 @@ type Raft struct {
 	// state a Raft server must maintain.
 	state     RaftState
 	RecvHeatBeat	bool
+	CollectVote	int
 	// Persistent state on all servers
 	currentTerm	int
 	VotedFor	int
@@ -225,6 +226,7 @@ func (rf *Raft) sendRequestVoteAll(){
 	rf.currentTerm+=1
 	rf.RecvHeatBeat=true
 	rf.state=RaftCandidate
+	rf.CollectVote=1	// vote to me
 	// read info from the rf,for the information might change
 	cur_Term := rf.currentTerm
 	Last_Log_Index := len(rf.Log)-1
@@ -253,14 +255,40 @@ func (rf *Raft) CollectVoteRes(server int, args *RequestVoteArgs){
 		return
 	}
 	rf.mu.Lock()
-
+	if rf.state == RaftFollower || args.Term != rf.currentTerm{	// the state has already been changed
+		rf.mu.Unlock()
+		return
+	}
+	if reply.Term > rf.currentTerm{	// is old
+		rf.currentTerm=reply.Term
+		rf.state=RaftFollower
+		// and the vote granted must be false
+		rf.mu.Unlock()
+		return
+	}
+	if rf.CollectVote > len(rf.peers)/2 {	// already be voted as leader and no need for another heatbeat thread
+		rf.mu.Unlock()
+		return
+	}
+	rf.CollectVote +=1
+	if rf.CollectVote > len(rf.peers)/2 {
+		rf.state = RaftLeader
+	}
 	rf.mu.Unlock()
+	go rf.sendHeatBeats()
 }
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
 	return ok
 }
+// HeatBeats
+func (rf *Raft) sendHeatBeats(){
+	// time should be the same as the ticker
 
+}
+func (rf *Raft) getHeatBeats(){
+	
+}
 
 // the service using Raft (e.g. a k/v server) wants to start
 // agreement on the next command to be appended to Raft's log. if this
