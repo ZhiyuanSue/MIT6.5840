@@ -286,8 +286,9 @@ func (rf *Raft) sendHeatBeats(){
 	// time should be the same as the ticker
 
 }
-func (rf *Raft) getHeatBeats(){
-	
+// the heat beat is the same as the append entry,but just the log entries are empty
+func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply){
+
 }
 
 // the service using Raft (e.g. a k/v server) wants to start
