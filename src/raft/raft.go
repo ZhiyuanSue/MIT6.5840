@@ -23,7 +23,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"fmt"
+	// "fmt"
 	//	"6.5840/labgob"
 	"6.5840/labrpc"
 )
@@ -52,6 +52,7 @@ type ApplyMsg struct {
 
 type LogEntry struct {
 	Term	int
+	Command		interface{}
 }
 
 type RaftState int
@@ -320,7 +321,7 @@ func (rf *Raft) CollectVoteRes(server int, args *RequestVoteArgs){
 	}
 	rf.CollectVote +=1
 	if rf.CollectVote > len(rf.peers)/2 {
-		fmt.Printf("me %v is voted for raft leader with collect %v term %v\n",rf.me,rf.CollectVote,rf.currentTerm)
+		// fmt.Printf("me %v is voted for raft leader with collect %v term %v\n",rf.me,rf.CollectVote,rf.currentTerm)
 		rf.state = RaftLeader
 	}
 	rf.mu.Unlock()
@@ -426,7 +427,19 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	isLeader := true
 
 	// Your code here (2B).
+	rf.mu.Lock()
+	if rf.killed() || rf.state != RaftLeader{
+		isLeader = false
+		return index, term, isLeader
+	}
+	rf.Log = append(rf.Log,LogEntry{
+		Term:rf.currentTerm,
+		Command:command,
+	})
+	index = len(rf.Log)-1
+	term = rf.currentTerm
 
+	rf.mu.Unlock()
 
 	return index, term, isLeader
 }
