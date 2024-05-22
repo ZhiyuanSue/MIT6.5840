@@ -344,19 +344,33 @@ func (rf *Raft) sendHeartBeatsAll(){
 	// time should be the same as the ticker
 	for rf.killed() == false && rf.state == RaftLeader {
 		// fmt.Printf("%v send heartbeat\n",rf.me);
+		var Prev_Log_Index []int
 		rf.mu.Lock()
 		cur_Term := rf.currentTerm
+
+		for i:=0;i<len(rf.NextIndex);i++{
+			Prev_Log_Index = append(Prev_Log_Index,rf.NextIndex[i]-1)
+		}
 		commit_idx := rf.CommitIndex
 		rf.mu.Unlock()
 
 		for i :=0;i<len(rf.peers);i++{
 			if i!=rf.me{
+				i_th_Pre_Log_Index := Prev_Log_Index[i]
+				i_th_Pre_Log_Term := -1
+				if i_th_Pre_Log_Index != -1{
+					i_th_Pre_Log_Term=rf.Log[i_th_Pre_Log_Index].Term
+				}
+				var new_entries []LogEntry
+				if len(rf.Log)-1 >= Prev_Log_Index[i]+1{
+					new_entries = rf.Log[Prev_Log_Index[i]+1:]
+				}
 				args := AppendEntriesArgs{
 					Term:	cur_Term,
 					LeaderId:	rf.me,
-					PrevLogIndex:	-1,
-					PrevLogTerm:	-1,
-					Entries:	nil,
+					PrevLogIndex:	i_th_Pre_Log_Index,
+					PrevLogTerm:	i_th_Pre_Log_Term,
+					Entries:	new_entries,
 					LeaderCommit:	commit_idx,
 				}
 				go rf.sendHeartBeat(i,&args)	// also use other threads to deal with the 
@@ -382,9 +396,15 @@ func (rf *Raft) sendHeartBeat(server int, args *AppendEntriesArgs){
 		rf.mu.Unlock()
 		return
 	}
+	
 	if reply.Term > rf.currentTerm {
 		rf.currentTerm =  reply.Term
 		rf.state = RaftFollower
+	}else if reply.Term < rf.currentTerm{
+		//ignore,will this case happen???
+		
+	}else if reply.Term == rf.currentTerm{
+		
 	}
 	rf.mu.Unlock()
 }
@@ -532,4 +552,20 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 
 	return rf
-}
+} 
+// 解题逻辑
+// 首先当然是按照paper的表格抄数据结构啦
+// 2A
+// 对于2A，其实就是考虑他三种状态的转换，最开始的时候啥都没有，那就都是一个follower，（所以先在初始化的时候做一些设定）
+// 那么follower需要转换为candidate，必须要检测到超时事件，那么先去按照这个逻辑去填入ticker的代码
+// 随后他会转换为candidate，这时候，他需要去发起投票，注意一个事情，就是，不能假定任何网络都是完好的，所以需要在发送的时候，是不能上锁的。
+// 增加向所有其他server发起投票的函数，并根据返回值做相应的处理
+// 随后继续增加收到投票之后的一个处理函数，通过传入的投票参数，决定返回值
+// 当满足一定情况的时候，就会转变成为leader
+// 对于leader，需要考虑的是，不停的发起心跳（其实这时候不发起心跳是能够跑过2A的测试的，只不过每次timeout都会导致新的vote罢了。
+// 增加心跳，这里需要考虑一个事情，就是心跳的函数和发送log entry的函数是一样的，所以，需要留出这部分的代码留到2B实现，这是一个简单的方法。
+// 然后再增加回应心跳的函数就行了
+// 总体而言是按照一个简单的状态转换的逻辑去实现即可
+// 2B
+// 2B的实现，首先需要弄一个start，大概的逻辑是，如果是leader就增加entry，否则直接返回false
+// 随后需要在上面的发log entry的函数和回应的部分增加添加log entry的部分。
