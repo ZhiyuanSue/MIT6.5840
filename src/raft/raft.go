@@ -86,6 +86,7 @@ type Raft struct {
 	NextIndex	[]int
 	MatchIndex	[]int
 
+	ApplyCh	chan ApplyMsg
 }
 
 // return currentTerm and whether this server
@@ -434,6 +435,7 @@ func (rf *Raft) sendHeartBeat(server int, args *AppendEntriesArgs){
 		}
 	}
 	// need to send Apply Msg to ApplyCh
+	rf.SendApplyMsg()
 	rf.mu.Unlock()
 }
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
@@ -502,7 +504,20 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 	}
 	// not the raft required but the lab required: send to the ApplyCh
 	// as the commit index might change
+	rf.SendApplyMsg();
 	rf.mu.Unlock()
+}
+func (rf *Raft) SendApplyMsg(){
+	fmt.Printf("server %v have a commit %v\n",rf.me, rf.CommitIndex)
+	for rf.CommitIndex > rf.LastApplied {
+		rf.LastApplied += 1
+		new_apply_msg := ApplyMsg{
+			CommandValid	: true,
+			Command			: rf.Log[rf.LastApplied].Command,
+			CommandIndex	: rf.LastApplied,
+		}
+		rf.ApplyCh <- new_apply_msg
+	}
 }
 
 // the service using Raft (e.g. a k/v server) wants to start
