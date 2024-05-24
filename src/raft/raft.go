@@ -626,6 +626,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.LastApplied=-1
 	rf.RecvHeartBeat=false
 	rf.ApplyCh = applyCh
+	rf.Log=append(rf.Log,LogEntry{})
+	rf.Log[0].Term = 0
 	for i:=0;i<len(peers);i++{
 		rf.NextIndex=append(rf.NextIndex,0)
 		rf.MatchIndex=append(rf.MatchIndex,0)
