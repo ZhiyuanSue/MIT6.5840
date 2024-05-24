@@ -23,7 +23,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"fmt"
+	// "fmt"
 	//	"6.5840/labgob"
 	"6.5840/labrpc"
 )
@@ -334,6 +334,7 @@ func (rf *Raft) CollectVoteRes(server int, args *RequestVoteArgs){
 		// the matchIndex[] initialized with all 0
 	}
 	rf.mu.Unlock()
+	//fmt.Printf("leader is %v\n",rf.me)
 	go rf.sendHeartBeatsAll()
 }
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
@@ -475,7 +476,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 	}
 
 	if len(args.Entries)!=0{
-		fmt.Printf("have receve a log append request with len %v\n",len(args.Entries))
+		// fmt.Printf("have receve a log append request with len %v\n",len(args.Entries))
 		// check whether there have any conflict
 		next_log_index := args.PrevLogIndex + 1
 		conflict_idx := -1
@@ -495,6 +496,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 	reply.Term = rf.currentTerm
 	reply.Success = true
 	// If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)
+	// fmt.Printf("leader commit is %v rf commit is %v\n",args.LeaderCommit,rf.CommitIndex)
 	if args.LeaderCommit > rf.CommitIndex{
 		if args.LeaderCommit >= len(rf.Log)-1{
 			rf.CommitIndex = len(rf.Log) -1
@@ -508,7 +510,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 	rf.mu.Unlock()
 }
 func (rf *Raft) SendApplyMsg(){
-	fmt.Printf("server %v have a commit %v\n",rf.me, rf.CommitIndex)
+	// fmt.Printf("server %v have a commit %v\n",rf.me, rf.CommitIndex)
 	for rf.CommitIndex > rf.LastApplied {
 		rf.LastApplied += 1
 		new_apply_msg := ApplyMsg{
@@ -623,6 +625,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.CommitIndex=-1
 	rf.LastApplied=-1
 	rf.RecvHeartBeat=false
+	rf.ApplyCh = applyCh
 	for i:=0;i<len(peers);i++{
 		rf.NextIndex=append(rf.NextIndex,0)
 		rf.MatchIndex=append(rf.MatchIndex,0)
