@@ -23,7 +23,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	// "fmt"
+	"fmt"
 	//	"6.5840/labgob"
 	"6.5840/labrpc"
 )
@@ -404,7 +404,12 @@ func (rf *Raft) sendHeartBeat(server int, args *AppendEntriesArgs){
 		//ignore,will this case happen???
 		
 	}else if reply.Term == rf.currentTerm{
-		
+		if reply.Success == true{
+			rf.MatchIndex[server] = args.PrevLogIndex + len(args.Entries)
+			rf.NextIndex[server] = rf.MatchIndex[server] + 1
+		} else if reply.Success == false{
+			rf.NextIndex[server] -= 1 
+		}
 	}
 	rf.mu.Unlock()
 }
@@ -422,14 +427,44 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 		rf.mu.Unlock()
 		return
 	}else if args.Term == rf.currentTerm{
-		// if empty log,just a heart beat
-		// else is 2B work
+		
 	}else if args.Term > rf.currentTerm{
 		rf.currentTerm=args.Term
 		rf.state= RaftFollower
-		//if empty log, a heart beat from new leader
+	}
+	// add reply false if log doesn't contain any entry at prevLogIndex whose term matches prevLogTerm
+	// if the prevLogIndex have log
+	if args.PrevLogIndex >= len(rf.Log){	// e.g. only one log,the len is 1,and the prevlogindex must be 0,it must less than len
+		reply.Term = rf.currentTerm
+		reply.Success = false
+		rf.mu.Unlock()
+		return
+	}
+	// if have the log but the log term is not match
+	if args.PrevLogIndex >= 0 && args.PrevLogTerm != rf.Log[args.PrevLogIndex].Term{
+		// remember that the args.PervLogIndex might be -1
+		reply.Term = rf.currentTerm
+		reply.Success = false
+		rf.mu.Unlock()
+		return
+	}
 
-		// else is 2B work
+	if len(args.Entries)!=0{
+		fmt.Printf("have receve a log append request with len %v\n",len(args.Entries))
+		// check whether there have any conflict
+		next_log_index := args.PrevLogIndex + 1
+		conflict_idx := -1
+		for i:=0 ; next_log_index + i < len(rf.Log) && i < len(args.Entries) ; i++{
+			if rf.Log[next_log_index + i].Term != args.Entries[i].Term{
+				conflict_idx = i
+				break
+			}
+		}
+		if conflict_idx >= 0{
+			// delete the existing entry and all that follow it
+			rf.Log = rf.Log[:next_log_index+conflict_idx]
+		}
+		rf.Log= append(rf.Log,args.Entries...)
 	}
 	rf.RecvHeartBeat=true
 	reply.Term = rf.currentTerm
