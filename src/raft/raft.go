@@ -409,8 +409,31 @@ func (rf *Raft) sendHeartBeat(server int, args *AppendEntriesArgs){
 			rf.NextIndex[server] = rf.MatchIndex[server] + 1
 		} else if reply.Success == false{
 			rf.NextIndex[server] -= 1 
+			// seems need retry？？？
 		}
 	}
+	// If there exists an N such that N > commitIndex, a majority
+	// of matchIndex[i] ≥ N, and log[N].term == currentTerm: set commitIndex = N
+	// use two for loop: 
+	// outer decrese the N to test
+	// inner check all the match index
+	for N := len(rf.Log)-1 ; N > rf.CommitIndex ; N--{
+		total_num := 0
+		for i:=0;i<len(rf.peers);i++{
+			if i==rf.me{
+				total_num++
+			}else{
+				if rf.MatchIndex[i]>=N && rf.Log[N].Term ==rf.currentTerm{
+					total_num++
+				}
+			}
+			if total_num > len(rf.peers)/2{
+				rf.CommitIndex=N
+				break
+			}
+		}
+	}
+	// need to send Apply Msg to ApplyCh
 	rf.mu.Unlock()
 }
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
@@ -469,6 +492,16 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 	rf.RecvHeartBeat=true
 	reply.Term = rf.currentTerm
 	reply.Success = true
+	// If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)
+	if args.LeaderCommit > rf.CommitIndex{
+		if args.LeaderCommit >= len(rf.Log)-1{
+			rf.CommitIndex = len(rf.Log) -1
+		} else if args.LeaderCommit < len(rf.Log) - 1{
+			rf.CommitIndex = args.LeaderCommit
+		}
+	}
+	// not the raft required but the lab required: send to the ApplyCh
+	// as the commit index might change
 	rf.mu.Unlock()
 }
 
