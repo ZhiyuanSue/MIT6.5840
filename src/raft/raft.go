@@ -489,8 +489,11 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 		if conflict_idx >= 0{
 			// delete the existing entry and all that follow it
 			rf.Log = rf.Log[:next_log_index+conflict_idx]
+			rf.Log = append(rf.Log,args.Entries[conflict_idx:]...)
+		}else{
+			// no conflict
+			rf.Log = append(rf.Log,args.Entries...)
 		}
-		rf.Log= append(rf.Log,args.Entries...)
 	}
 	rf.RecvHeartBeat=true
 	reply.Term = rf.currentTerm
