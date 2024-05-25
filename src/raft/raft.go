@@ -23,7 +23,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	// "fmt"
+	"fmt"
 	//	"6.5840/labgob"
 	"6.5840/labrpc"
 )
@@ -191,6 +191,7 @@ type AppendEntriesReply	struct	{
 // example RequestVote RPC handler.
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
+	// fmt.Printf("%v get a vote request from %v\n",rf.me,args.CandidateId)
 	rf.mu.Lock()
 	if args.Term<rf.currentTerm{
 		reply.Term = rf.currentTerm
@@ -204,7 +205,10 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		if Last_Log_Index != -1{
 			Last_Log_Term = rf.Log[len(rf.Log)-1].Term
 		}
-		if Last_Log_Index<=args.LastLogIndex && Last_Log_Term==args.LastLogTerm{
+		// fmt.Printf("@@@@@@ vote request from %v term %v > server %v term %v\n",args.CandidateId,args.Term,rf.me,rf.currentTerm)
+		// fmt.Printf("@@@@@@ last log term is %v args last term index %v\n",Last_Log_Term,args.LastLogTerm)
+		// fmt.Printf("@@@@@@ last log index is %v args last log index %v\n",Last_Log_Index,args.LastLogIndex)
+		if args.LastLogTerm > Last_Log_Term || (Last_Log_Index<=args.LastLogIndex && Last_Log_Term==args.LastLogTerm){
 			rf.currentTerm=args.Term
 			rf.state=RaftFollower
 			rf.VotedFor=args.CandidateId
@@ -222,7 +226,10 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 			if Last_Log_Index != -1{
 				Last_Log_Term = rf.Log[len(rf.Log)-1].Term
 			}
-			if Last_Log_Index<=args.LastLogIndex && Last_Log_Term==args.LastLogTerm{
+			// fmt.Printf("@@@@@@ vote request from %v term %v == server %v term %v\n",args.CandidateId,args.Term,rf.me,rf.currentTerm)
+			// fmt.Printf("@@@@@@ last log term is %v args last term index %v\n",Last_Log_Term,args.LastLogTerm)
+			// fmt.Printf("@@@@@@ last log index is %v args last log index %v\n",Last_Log_Index,args.LastLogIndex)
+			if args.LastLogTerm > Last_Log_Term || (Last_Log_Index<=args.LastLogIndex && Last_Log_Term==args.LastLogTerm){
 				rf.currentTerm=args.Term
 				rf.state=RaftFollower
 				rf.VotedFor=args.CandidateId
@@ -267,12 +274,12 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 // that the caller passes the address of the reply struct with &, not
 // the struct itself.
 
-func (rf *Raft) sendRequestVoteAll(){
-	// fmt.Printf("%v start vote term %v\n",rf.me,rf.currentTerm);
+func (rf *Raft) sendRequestVoteAll(){	
 	// update the infos
 	rf.mu.Lock()
 	// write new info
 	rf.currentTerm+=1
+	// fmt.Printf("%v start vote term %v\n",rf.me,rf.currentTerm);
 	rf.RecvHeartBeat=true
 	rf.state=RaftCandidate
 	rf.CollectVote=1	// vote to me
@@ -300,10 +307,12 @@ func (rf *Raft) sendRequestVoteAll(){
 }
 func (rf *Raft) CollectVoteRes(server int, args *RequestVoteArgs){
 	reply := RequestVoteReply{}
+	// fmt.Printf("$$$$$$ %v try to collect vote from %v\n",rf.me,server)
 	ok	:= rf.sendRequestVote(server,args,&reply)
 	if !ok || reply.VoteGranted == false {
 		return
 	}
+	// fmt.Printf("$$$$$$ %v got a vote from %v\n",rf.me,server)
 	rf.mu.Lock()
 	if rf.state == RaftFollower || args.Term != rf.currentTerm{	// the state has already been changed
 		rf.mu.Unlock()
@@ -334,12 +343,28 @@ func (rf *Raft) CollectVoteRes(server int, args *RequestVoteArgs){
 		// the matchIndex[] initialized with all 0
 	}
 	rf.mu.Unlock()
-	//fmt.Printf("leader is %v\n",rf.me)
+	// fmt.Printf("leader is %v\n",rf.me)
 	go rf.sendHeartBeatsAll()
 }
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
 	return ok
+}
+func PrintHeartBeatsFrameArgs(args AppendEntriesArgs){
+	fmt.Printf("====== ====== ======\n")
+	fmt.Printf("\tTerm\t%v\n",args.Term)
+	fmt.Printf("\tLeader\t%v\n",args.LeaderId)
+	fmt.Printf("\tPrevLogIndex\t%v\n",args.PrevLogIndex)
+	fmt.Printf("\tPrevLogTerm\t%v\n",args.PrevLogIndex)
+	fmt.Printf("\tEntry len\t%v\n",len(args.Entries))
+	fmt.Printf("\tLeader commit\t%v\n",args.LeaderCommit)
+	fmt.Printf("====== ====== ======\n")
+}
+func PrintHeartBeatsFrameReply(reply AppendEntriesReply){
+	fmt.Printf("====== ====== ======\n")
+	fmt.Printf("\tTerm\t%v\n",reply.Term)
+	fmt.Printf("\tSuccess\t%v\n",reply.Success)
+	fmt.Printf("====== ====== ======\n")
 }
 // HeartBeats
 func (rf *Raft) sendHeartBeatsAll(){
@@ -357,13 +382,15 @@ func (rf *Raft) sendHeartBeatsAll(){
 		rf.mu.Unlock()
 
 		for i :=0;i<len(rf.peers);i++{
-			if i!=rf.me{
+			if i!=rf.me && rf.state == RaftLeader{
+				rf.mu.Lock()
 				i_th_Pre_Log_Index := Prev_Log_Index[i]
 				i_th_Pre_Log_Term := -1
 				if i_th_Pre_Log_Index != -1{
 					i_th_Pre_Log_Term=rf.Log[i_th_Pre_Log_Index].Term
 				}
 				var new_entries []LogEntry
+				// fmt.Printf("###### leader %v think %v len is %v prev is %v\n",rf.me,i,len(rf.Log),Prev_Log_Index[i])
 				if len(rf.Log)-1 >= Prev_Log_Index[i]+1{
 					new_entries = rf.Log[Prev_Log_Index[i]+1:]
 				}
@@ -375,6 +402,11 @@ func (rf *Raft) sendHeartBeatsAll(){
 					Entries:	new_entries,
 					LeaderCommit:	commit_idx,
 				}
+				rf.mu.Unlock()
+				// if len(new_entries)>0{
+				// 	fmt.Printf("====== send append to server %v prev log index is %v\n",i,i_th_Pre_Log_Index)
+				// 	PrintHeartBeatsFrameArgs(args)
+				// }
 				go rf.sendHeartBeat(i,&args)	// also use other threads to deal with the 
 			}
 		}
@@ -390,6 +422,8 @@ func (rf *Raft) sendHeartBeat(server int, args *AppendEntriesArgs){
 	if !ok {
 		return
 	}
+	// fmt.Printf("====== %v receive a message from %v\n",rf.me,server)
+	// PrintHeartBeatsFrameReply(reply)
 	rf.mu.Lock()
 	// check self state
 	if rf.state != RaftLeader || rf.currentTerm!=args.Term {
@@ -402,6 +436,9 @@ func (rf *Raft) sendHeartBeat(server int, args *AppendEntriesArgs){
 	if reply.Term > rf.currentTerm {
 		rf.currentTerm =  reply.Term
 		rf.state = RaftFollower
+		rf.mu.Unlock()
+		return
+		// if he is not the leader ,cannot continue change the commit
 	}else if reply.Term < rf.currentTerm{
 		//ignore,will this case happen???
 		
@@ -409,6 +446,8 @@ func (rf *Raft) sendHeartBeat(server int, args *AppendEntriesArgs){
 		if reply.Success == true{
 			rf.MatchIndex[server] = args.PrevLogIndex + len(args.Entries)
 			rf.NextIndex[server] = rf.MatchIndex[server] + 1
+			// fmt.Printf("******server %v success,and args.PrevLogIndex is %v len %v\n",server,args.PrevLogIndex,len(args.Entries))
+			// fmt.Printf("******rf match is %v rf next is %v\n",rf.MatchIndex[server],rf.NextIndex[server])
 		} else if reply.Success == false{
 			rf.NextIndex[server] -= 1 
 			// seems need retry？？？
@@ -513,7 +552,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 	rf.mu.Unlock()
 }
 func (rf *Raft) SendApplyMsg(){
-	// fmt.Printf("server %v have a commit %v\n",rf.me, rf.CommitIndex)
+	//fmt.Printf("server %v have a commit %v last applied %v\n",rf.me, rf.CommitIndex,rf.LastApplied)
 	for rf.CommitIndex > rf.LastApplied {
 		rf.LastApplied += 1
 		new_apply_msg := ApplyMsg{
@@ -623,14 +662,14 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	// Your initialization code here (2A, 2B, 2C).
 	rf.state = RaftFollower
-	rf.currentTerm=-1
+	rf.currentTerm=0
 	rf.VotedFor=-1
-	rf.CommitIndex=-1
-	rf.LastApplied=-1
 	rf.RecvHeartBeat=false
 	rf.ApplyCh = applyCh
 	rf.Log=append(rf.Log,LogEntry{})
 	rf.Log[0].Term = 0
+	rf.CommitIndex= 0
+	rf.LastApplied=0
 	for i:=0;i<len(peers);i++{
 		rf.NextIndex=append(rf.NextIndex,0)
 		rf.MatchIndex=append(rf.MatchIndex,0)
