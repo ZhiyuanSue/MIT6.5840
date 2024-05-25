@@ -703,3 +703,10 @@ func Make(peers []*labrpc.ClientEnd, me int,
 // 2B
 // 2B的实现，首先需要弄一个start，大概的逻辑是，如果是leader就增加entry，否则直接返回false
 // 随后需要在上面的发log entry的函数和回应的部分增加添加log entry的部分。
+
+// 2B 遇到的一个bug，在测试的时候，有的时候能过，有的时候不能，我仔细debug之后，得出的结论是：
+// 每次在发现不匹配的时候我向后回退了1格，但是，如果log非常长，这需要一定的时间来让他能够回退到匹配的时候，但是如果这个时候，发生了重新选举
+// 由于他需要重新设定nextindex，也就是说，这时候会导致，重新开始倒数
+// 不巧的是我碰到的测例，就是会发生这个事情，看起来，他有个leader back up quickly over incorrect follower logs
+// 这个测例一直过不去，就是这样的原因。
+// 我的理解是，他需要立即重试。
