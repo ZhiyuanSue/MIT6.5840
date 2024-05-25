@@ -379,6 +379,7 @@ func (rf *Raft) sendHeartBeatsAll(){
 			Prev_Log_Index = append(Prev_Log_Index,rf.NextIndex[i]-1)
 		}
 		commit_idx := rf.CommitIndex
+		// fmt.Printf("###### leader log len is %v\n",len(rf.Log))
 		rf.mu.Unlock()
 
 		for i :=0;i<len(rf.peers);i++{
@@ -449,7 +450,7 @@ func (rf *Raft) sendHeartBeat(server int, args *AppendEntriesArgs){
 			// fmt.Printf("******server %v success,and args.PrevLogIndex is %v len %v\n",server,args.PrevLogIndex,len(args.Entries))
 			// fmt.Printf("******rf match is %v rf next is %v\n",rf.MatchIndex[server],rf.NextIndex[server])
 		} else if reply.Success == false{
-			rf.NextIndex[server] -= 1 
+			rf.NextIndex[server] -= 1
 			// seems need retry？？？
 		}
 	}
@@ -503,6 +504,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 		reply.Term = rf.currentTerm
 		reply.Success = false
 		rf.mu.Unlock()
+		// fmt.Printf("###### server %v here return false args.prev index %v len %v\n",rf.me,args.PrevLogIndex,len(rf.Log))
 		return
 	}
 	// if have the log but the log term is not match
@@ -511,6 +513,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 		reply.Term = rf.currentTerm
 		reply.Success = false
 		rf.mu.Unlock()
+		// fmt.Printf("###### server %v here return false args.prev term %v len %v\n",rf.me,args.PrevLogTerm,rf.Log[args.PrevLogIndex].Term)
 		return
 	}
 
@@ -538,7 +541,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 	reply.Term = rf.currentTerm
 	reply.Success = true
 	// If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)
-	// fmt.Printf("leader commit is %v rf commit is %v\n",args.LeaderCommit,rf.CommitIndex)
+	// fmt.Printf("leader commit is %v rf commit is %v len log is %v\n",args.LeaderCommit,rf.CommitIndex,len(rf.Log))
 	if args.LeaderCommit > rf.CommitIndex{
 		if args.LeaderCommit >= len(rf.Log)-1{
 			rf.CommitIndex = len(rf.Log) -1
@@ -552,7 +555,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 	rf.mu.Unlock()
 }
 func (rf *Raft) SendApplyMsg(){
-	//fmt.Printf("server %v have a commit %v last applied %v\n",rf.me, rf.CommitIndex,rf.LastApplied)
+	// fmt.Printf("server %v have a commit %v last applied %v\n",rf.me, rf.CommitIndex,rf.LastApplied)
 	for rf.CommitIndex > rf.LastApplied {
 		rf.LastApplied += 1
 		new_apply_msg := ApplyMsg{
@@ -594,6 +597,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	})
 	index = len(rf.Log)-1
 	term = rf.currentTerm
+	// fmt.Printf("###### after start the leader %v log len is %v term is %v\n",rf.me,index,term)
 	rf.mu.Unlock()
 
 	return index, term, isLeader
@@ -635,7 +639,7 @@ func (rf *Raft) ticker() {
 		rf.mu.Unlock()
 		// pause for a random amount of time between 50 and 350
 		// milliseconds.
-		ms := 150 + (rand.Int63() % 200)	
+		ms := 300 + (rand.Int63() % 50)	
 		// the 2A has a warning of "warning: term changed even though there were no failures"
 		// if I use 10 times per second, the heartbeat should be 100 ms
 		// and only the time of election timeout larger then the 100 ms, that the timeout never happen
