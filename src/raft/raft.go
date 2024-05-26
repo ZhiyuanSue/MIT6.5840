@@ -194,7 +194,7 @@ type AppendEntriesReply	struct	{
 // example RequestVote RPC handler.
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
-	fmt.Printf("<%v:T%v> get a vote request from %v\n",rf.me,rf.currentTerm,args.CandidateId)
+	// fmt.Printf("<%v:T%v> get a vote request from %v\n",rf.me,rf.currentTerm,args.CandidateId)
 	rf.mu.Lock()
 	if args.Term<rf.currentTerm{
 		reply.Term = rf.currentTerm
@@ -208,9 +208,9 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		if Last_Log_Index != -1{
 			Last_Log_Term = rf.Log[len(rf.Log)-1].Term
 		}
-		fmt.Printf("@@@@@@ vote request from %v term %v > server %v term %v\n",args.CandidateId,args.Term,rf.me,rf.currentTerm)
-		fmt.Printf("@@@@@@ last log term is %v args last term index %v\n",Last_Log_Term,args.LastLogTerm)
-		fmt.Printf("@@@@@@ last log index is %v args last log index %v\n",Last_Log_Index,args.LastLogIndex)
+		// fmt.Printf("@@@@@@ vote request from %v term %v > server %v term %v\n",args.CandidateId,args.Term,rf.me,rf.currentTerm)
+		// fmt.Printf("@@@@@@ last log term is %v args last term index %v\n",Last_Log_Term,args.LastLogTerm)
+		// fmt.Printf("@@@@@@ last log index is %v args last log index %v\n",Last_Log_Index,args.LastLogIndex)
 		if args.LastLogTerm > Last_Log_Term || (Last_Log_Index<=args.LastLogIndex && Last_Log_Term==args.LastLogTerm){
 			rf.currentTerm=args.Term
 			rf.state=RaftFollower
@@ -218,12 +218,12 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 			rf.RecvHeartBeat=true	// let this vote as the new leader's first heartbeat
 			reply.Term=args.Term
 			reply.VoteGranted=true
-			fmt.Printf("send the vote to %v\n",args.CandidateId)
+			// fmt.Printf("send the vote to %v\n",args.CandidateId)
 			rf.mu.Unlock()
 			return
 		}
 	}else if args.Term == rf.currentTerm{
-		fmt.Printf("go into the args term equal with rf vote for %v candidateid %v\n",rf.VotedFor,args.CandidateId)
+		// fmt.Printf("go into the args term equal with rf vote for %v candidateid %v\n",rf.VotedFor,args.CandidateId)
 		// if the term is equal to current term ,generally the vote for must not be -1
 		if rf.VotedFor == -1 || rf.VotedFor == args.CandidateId{
 			Last_Log_Index := len(rf.Log)-1
@@ -231,9 +231,9 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 			if Last_Log_Index != -1{
 				Last_Log_Term = rf.Log[len(rf.Log)-1].Term
 			}
-			fmt.Printf("@@@@@@ vote request from %v term %v == server %v term %v\n",args.CandidateId,args.Term,rf.me,rf.currentTerm)
-			fmt.Printf("@@@@@@ last log term is %v args last term index %v\n",Last_Log_Term,args.LastLogTerm)
-			fmt.Printf("@@@@@@ last log index is %v args last log index %v\n",Last_Log_Index,args.LastLogIndex)
+			// fmt.Printf("@@@@@@ vote request from %v term %v == server %v term %v\n",args.CandidateId,args.Term,rf.me,rf.currentTerm)
+			// fmt.Printf("@@@@@@ last log term is %v args last term index %v\n",Last_Log_Term,args.LastLogTerm)
+			// fmt.Printf("@@@@@@ last log index is %v args last log index %v\n",Last_Log_Index,args.LastLogIndex)
 			if args.LastLogTerm > Last_Log_Term || (Last_Log_Index<=args.LastLogIndex && Last_Log_Term==args.LastLogTerm){
 				rf.currentTerm=args.Term
 				rf.state=RaftFollower
@@ -284,7 +284,7 @@ func (rf *Raft) sendRequestVoteAll(){
 	rf.mu.Lock()
 	// write new info
 	rf.currentTerm+=1
-	fmt.Printf("%v start vote term %v\n",rf.me,rf.currentTerm);
+	// fmt.Printf("%v start vote term %v\n",rf.me,rf.currentTerm);
 	rf.RecvHeartBeat=true
 	rf.state=RaftCandidate
 	rf.CollectVote=1	// vote to me
@@ -296,7 +296,6 @@ func (rf *Raft) sendRequestVoteAll(){
 	if Last_Log_Index != -1{
 		Last_Log_Term = rf.Log[len(rf.Log)-1].Term
 	}
-	rf.mu.Unlock()
 
 	for i :=0;i<len(rf.peers);i++{
 		if i!=rf.me{
@@ -309,15 +308,19 @@ func (rf *Raft) sendRequestVoteAll(){
 			go rf.CollectVoteRes(i,&args)	// we have to send all the infos to other server ,so we must use other thread ,not a sequence way
 		}
 	}
+	if rf.state != RaftLeader{
+		rf.VotedFor = -1
+	}
+	rf.mu.Unlock()
 }
 func (rf *Raft) CollectVoteRes(server int, args *RequestVoteArgs){
 	reply := RequestVoteReply{}
-	fmt.Printf("$$$$$$ %v try to collect vote from %v\n",rf.me,server)
+	// fmt.Printf("$$$$$$ %v try to collect vote from %v\n",rf.me,server)
 	ok	:= rf.sendRequestVote(server,args,&reply)
 	if !ok {
 		return
 	}
-	fmt.Printf("$$$$$$ %v got a vote from %v\n",rf.me,server)
+	// fmt.Printf("$$$$$$ %v got a vote from %v\n",rf.me,server)
 	rf.mu.Lock()
 	if rf.state == RaftFollower || args.Term != rf.currentTerm{	// the state has already been changed
 		rf.mu.Unlock()
@@ -341,7 +344,7 @@ func (rf *Raft) CollectVoteRes(server int, args *RequestVoteArgs){
 	}
 	rf.CollectVote +=1
 	if rf.CollectVote > len(rf.peers)/2 {
-		fmt.Printf("me %v is voted for raft leader with collect %v term %v\n",rf.me,rf.CollectVote,rf.currentTerm)
+		// fmt.Printf("me %v is voted for raft leader with collect %v term %v\n",rf.me,rf.CollectVote,rf.currentTerm)
 		rf.state = RaftLeader
 		// after every election，
 		// the nextIndex[] initialized with the leader's lastlogindex + 1
@@ -351,7 +354,7 @@ func (rf *Raft) CollectVoteRes(server int, args *RequestVoteArgs){
 			rf.MatchIndex[i]=0
 		}
 		// the matchIndex[] initialized with all 0
-		fmt.Printf("leader is %v\n",rf.me)
+		// fmt.Printf("leader is %v\n",rf.me)
 	}
 	rf.mu.Unlock()
 	go rf.sendHeartBeatsAll()
@@ -797,3 +800,5 @@ func Make(peers []*labrpc.ClientEnd, me int,
 // 于是继续查看他vote的过程
 // 看上去是因为当term相等的时候，需要判定vote for 是否为-1或者为candidate ID，但是在这一步，始终没能正确的投票出去
 // 注意到，这时候需要所有三个仍然存活的节点都同意投票给他才可以。
+
+// 最后我加了一个设计，也就是每次投票之后，查看自己是否是leader，如果不是，就清除掉投给自己的票。
