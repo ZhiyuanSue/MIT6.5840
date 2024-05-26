@@ -389,10 +389,12 @@ func (rf *Raft) sendHeartBeatsAll(){
 		rf.mu.Unlock()
 
 		for i :=0;i<len(rf.peers);i++{
+			// fmt.Printf("start set heart beats to all servers\n")
 			if i!=rf.me && rf.state == RaftLeader{
 				rf.mu.Lock()
 				i_th_Pre_Log_Index := Prev_Log_Index[i]
 				i_th_Pre_Log_Term := -1
+				// fmt.Printf("prev log index is %v\n",i_th_Pre_Log_Index)
 				if i_th_Pre_Log_Index != -1{
 					i_th_Pre_Log_Term=rf.Log[i_th_Pre_Log_Index].Term
 				}
@@ -459,6 +461,7 @@ func (rf *Raft) sendHeartBeat(server int, args *AppendEntriesArgs){
 		} else if reply.Success == false{
 			// seems need retry???
 			if reply.XTerm == -1{
+				// fmt.Printf("reply's xlen is %v\n",reply.XLen)
 				rf.NextIndex[server] = reply.XLen	// no conflict, is that possible???
 			} else {
 				conflict_idx := rf.NextIndex[server] - 1
@@ -505,11 +508,12 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 // the heart beat is the same as the append entry,but just the log entries are empty
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply){
 	// fmt.Printf("%v receive heart beat term %v cur term %v leader id is %v\n",rf.me,args.Term, rf.currentTerm,args.LeaderId)
+	rf.mu.Lock()
 	reply.XTerm=-1
 	reply.XIndex=-1
 	reply.XLen=len(rf.Log)
-	rf.mu.Lock()
 	if args.Term < rf.currentTerm{
+		// fmt.Printf("args term unequal to rf current term\n")
 		reply.Term = rf.currentTerm
 		reply.Success = false
 		rf.mu.Unlock()
@@ -534,8 +538,15 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 		// remember that the args.PervLogIndex might be -1
 		reply.Term = rf.currentTerm
 		reply.Success = false
+		// meet a problem that the len is larger then the leader,hance the return len might be larger then the nextindex[server]
+		reply.XTerm = rf.Log[args.PrevLogIndex].Term
+		var xindex int
+		for conflict_idx := args.PrevLogIndex; rf.Log[conflict_idx].Term == rf.currentTerm;conflict_idx--{
+			xindex = conflict_idx
+		}
+		reply.XIndex= xindex
 		rf.mu.Unlock()
-		// fmt.Printf("###### server %v here return false args.prev term %v len %v\n",rf.me,args.PrevLogTerm,rf.Log[args.PrevLogIndex].Term)
+		// fmt.Printf("###### server %v here return false args.prev term %v rf term %v\n",rf.me,args.PrevLogTerm,rf.Log[args.PrevLogIndex].Term)
 		return
 	}
 	rf.RecvHeartBeat=true
