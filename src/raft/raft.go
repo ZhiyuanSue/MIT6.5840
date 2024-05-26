@@ -194,7 +194,7 @@ type AppendEntriesReply	struct	{
 // example RequestVote RPC handler.
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
-	// fmt.Printf("%v get a vote request from %v\n",rf.me,args.CandidateId)
+	// fmt.Printf("<%v:T%v> get a vote request from %v\n",rf.me,rf.currentTerm,args.CandidateId)
 	rf.mu.Lock()
 	if args.Term<rf.currentTerm{
 		reply.Term = rf.currentTerm
@@ -218,6 +218,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 			rf.RecvHeartBeat=true	// let this vote as the new leader's first heartbeat
 			reply.Term=args.Term
 			reply.VoteGranted=true
+			// fmt.Printf("send the vote to %v\n",args.CandidateId)
 			rf.mu.Unlock()
 			return
 		}
@@ -312,7 +313,7 @@ func (rf *Raft) CollectVoteRes(server int, args *RequestVoteArgs){
 	reply := RequestVoteReply{}
 	// fmt.Printf("$$$$$$ %v try to collect vote from %v\n",rf.me,server)
 	ok	:= rf.sendRequestVote(server,args,&reply)
-	if !ok || reply.VoteGranted == false {
+	if !ok {
 		return
 	}
 	// fmt.Printf("$$$$$$ %v got a vote from %v\n",rf.me,server)
@@ -325,6 +326,10 @@ func (rf *Raft) CollectVoteRes(server int, args *RequestVoteArgs){
 		rf.currentTerm=reply.Term
 		rf.state=RaftFollower
 		// and the vote granted must be false
+		rf.mu.Unlock()
+		return
+	}
+	if reply.VoteGranted == false{
 		rf.mu.Unlock()
 		return
 	}
@@ -372,9 +377,19 @@ func PrintHeartBeatsFrameReply(reply AppendEntriesReply){
 	fmt.Printf("\tXLen\t%v\n",reply.XLen)
 	fmt.Printf("====== ====== ======\n")
 }
+func (rf *Raft) PrintLogEntries(){
+	fmt.Printf("====== ====== ======\n")
+	fmt.Printf("<S%v:L%v:Cmt%v>\t",rf.me,len(rf.Log),rf.CommitIndex)
+	for i:=0;i<len(rf.Log);i++{
+		fmt.Printf("[T%v:C%v]",rf.Log[i].Term,rf.Log[i].Command)
+	}
+	fmt.Printf("\n")
+	fmt.Printf("====== ====== ======\n")
+}
 // HeartBeats
 func (rf *Raft) sendHeartBeatsAll(){
 	// time should be the same as the ticker
+	// rf.PrintLogEntries()
 	for rf.killed() == false && rf.state == RaftLeader {
 		// fmt.Printf("%v send heartbeat\n",rf.me);
 		var Prev_Log_Index []int
@@ -411,8 +426,8 @@ func (rf *Raft) sendHeartBeatsAll(){
 				}
 				
 				// if len(new_entries)>0{
-					// fmt.Printf("====== send append to server %v prev log index is %v\n",i,i_th_Pre_Log_Index)
-					// PrintHeartBeatsFrameArgs(args)
+				// 	fmt.Printf("====== send append to server %v prev log index is %v\n",i,i_th_Pre_Log_Index)
+				// 	PrintHeartBeatsFrameArgs(args)
 				// }
 				go rf.sendHeartBeat(i,&args)	// also use other threads to deal with the 
 			}
@@ -585,6 +600,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 }
 func (rf *Raft) SendApplyMsg(){
 	// fmt.Printf("server %v have a commit %v last applied %v\n",rf.me, rf.CommitIndex,rf.LastApplied)
+	// rf.PrintLogEntries()
 	for rf.CommitIndex > rf.LastApplied {
 		rf.LastApplied += 1
 		new_apply_msg := ApplyMsg{
@@ -666,6 +682,7 @@ func (rf *Raft) ticker() {
 			}
 		}
 		rf.mu.Unlock()
+		// rf.PrintLogEntries()
 		// pause for a random amount of time between 50 and 350
 		// milliseconds.
 		ms := 150 + (rand.Int63() % 200)	
@@ -746,3 +763,27 @@ func Make(peers []*labrpc.ClientEnd, me int,
 // 另一个地方在于，向后比较，如果有匹配的就继续添加，如果不匹配就向后的用新的覆盖。
 // 所以需要增加向前比较term的部分。然后再更新了xlen什么的东西之后，再返回false
 // 然后前者需要更新xterm什么的，后者其实是success的路径，不需要更新xterm（因为跑不到）
+
+// 另一个bug
+// 记录一下testbackup的情况
+
+// 开始所有的都提交了一个
+// 把leader1 和leader+1分到一个组，剩下三个一个组
+// 向leader1提交一大堆，显然这些得不到三个确认，都是未确认的。
+// 让剩下三个组一个集群，这时候会重新选举
+// 向新的集群提交一大堆
+// 在新的集群中，又试图down掉一个server
+// 在新的只有两个的集群中继续提交一大堆，显然他们无法被commit
+// 试图down掉所有的server
+// 然后把之前断掉链接的三个都加进来，也就是一个leader1和他的follower，以及leader2手下down掉的那个server
+// 这时候，试图提交50个，看上去一定会成功
+// 显然这时候leader是leader1, 他会继续发心跳包，收到了false，去快速回退，但是他会发现自己的term很低，于是重新变成follower
+// 不过，问题来了，这新加的50个log，他会发给目前认为是leader的所有server，也就是leader1，然后它term很低，会被term高的那个覆盖掉。
+// 所以理论上，收到一个新的追加请求的时候，应该立即发心跳包去试图更新自己的状态？？？
+// 全都连回来，会把最后的都提交上去。
+
+// 我遇到的bug是在试图收集所有的vote信息的时候
+// 我一开始加了一个判断，是否是ok，或者被投票==false，如果失败就扔掉
+// 但是问题来了，如果按照这个逻辑，那么后面根据投票的false结果更新自己的term的事情就做不了了
+// 所以需要把这个投票==false的逻辑放在后面。
+// 但是即便如此，这个测例仍然存在问题，不过，已经有一定概率能够成功了
