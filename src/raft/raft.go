@@ -550,6 +550,8 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 		return
 	}
 	rf.RecvHeartBeat=true
+	// prev check is for the log before the prev_log_index
+	// the following is used for the logs after the next_log_index
 	if len(args.Entries)!=0{
 		// fmt.Printf("have receve a log append request with len %v\n",len(args.Entries))
 		// check whether there have any conflict
@@ -566,8 +568,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 			// delete the existing entry and all that follow it
 			rf.Log = rf.Log[:next_log_index+conflict_idx]
 			rf.Log = append(rf.Log,args.Entries[conflict_idx:]...)
-			reply.XTerm = rf.Log[conflict_idx].Term
-			reply.XIndex = conflict_idx
 		}else{
 			// no conflict
 			rf.Log = append(rf.Log,args.Entries...)
@@ -745,3 +745,10 @@ func Make(peers []*labrpc.ClientEnd, me int,
 // 不巧的是我碰到的测例，就是会发生这个事情，看起来，他有个leader back up quickly over incorrect follower logs
 // 这个测例一直过不去，就是这样的原因。
 // 我的理解是，他需要立即重试。
+// 我增加了快速重试的部分，虽然上面说的leader back up还是挂了
+// 另一个bug是数组超过限制，原因是，我弄错了conflict
+// 他有两个需要比较的部分，第一个是向前比较，向前比较只有term信息，没有log entry，所以只能配一下term
+// 如果这个配不上，就得回退，不能增加，因为缺少旧的log
+// 另一个地方在于，向后比较，如果有匹配的就继续添加，如果不匹配就向后的用新的覆盖。
+// 所以需要增加向前比较term的部分。然后再更新了xlen什么的东西之后，再返回false
+// 然后前者需要更新xterm什么的，后者其实是success的路径，不需要更新xterm（因为跑不到）
