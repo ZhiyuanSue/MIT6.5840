@@ -386,12 +386,10 @@ func (rf *Raft) sendHeartBeatsAll(){
 		}
 		commit_idx := rf.CommitIndex
 		// fmt.Printf("###### leader log len is %v\n",len(rf.Log))
-		rf.mu.Unlock()
 
 		for i :=0;i<len(rf.peers);i++{
 			// fmt.Printf("start set heart beats to all servers\n")
 			if i!=rf.me && rf.state == RaftLeader{
-				rf.mu.Lock()
 				i_th_Pre_Log_Index := Prev_Log_Index[i]
 				i_th_Pre_Log_Term := -1
 				// fmt.Printf("prev log index is %v\n",i_th_Pre_Log_Index)
@@ -400,8 +398,8 @@ func (rf *Raft) sendHeartBeatsAll(){
 				}
 				var new_entries []LogEntry
 				// fmt.Printf("###### leader %v len is %v think %v prev is %v\n",rf.me,len(rf.Log),i,Prev_Log_Index[i])
-				if len(rf.Log)-1 >= Prev_Log_Index[i]+1{
-					new_entries = rf.Log[Prev_Log_Index[i]+1:]
+				if len(rf.Log)-1 >= i_th_Pre_Log_Index+1{
+					new_entries = rf.Log[i_th_Pre_Log_Index+1:]
 				}
 				args := AppendEntriesArgs{
 					Term:	cur_Term,
@@ -411,15 +409,15 @@ func (rf *Raft) sendHeartBeatsAll(){
 					Entries:	new_entries,
 					LeaderCommit:	commit_idx,
 				}
-				rf.mu.Unlock()
+				
 				// if len(new_entries)>0{
-				// 	fmt.Printf("====== send append to server %v prev log index is %v\n",i,i_th_Pre_Log_Index)
-				// 	PrintHeartBeatsFrameArgs(args)
+					// fmt.Printf("====== send append to server %v prev log index is %v\n",i,i_th_Pre_Log_Index)
+					// PrintHeartBeatsFrameArgs(args)
 				// }
 				go rf.sendHeartBeat(i,&args)	// also use other threads to deal with the 
 			}
 		}
-
+		rf.mu.Unlock()
 		ms := 100	//heartbeat RPCs no more than ten times per second.
 		time.Sleep(time.Duration(ms) * time.Millisecond)
 	}
@@ -556,22 +554,18 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 		// fmt.Printf("have receve a log append request with len %v\n",len(args.Entries))
 		// check whether there have any conflict
 		next_log_index := args.PrevLogIndex + 1
-		conflict_idx := -1
+		conflict_idx := 0
 		for i:=0 ; next_log_index + i < len(rf.Log) && i < len(args.Entries) ; i++{
 			if rf.Log[next_log_index + i].Term != args.Entries[i].Term{
+				// fmt.Printf("conflict at %v\n",next_log_index+i)
 				conflict_idx = i
 				break
 			}
 		}
-		if conflict_idx >= 0{
-			// fmt.Printf("conflict idx is %v\n",conflict_idx)
-			// delete the existing entry and all that follow it
-			rf.Log = rf.Log[:next_log_index+conflict_idx]
-			rf.Log = append(rf.Log,args.Entries[conflict_idx:]...)
-		}else{
-			// no conflict
-			rf.Log = append(rf.Log,args.Entries...)
-		}
+		// 	fmt.Printf("conflict idx is %v\n",conflict_idx)
+		// delete the existing entry and all that follow it
+		rf.Log = rf.Log[:next_log_index+conflict_idx]
+		rf.Log = append(rf.Log,args.Entries[conflict_idx:]...)
 	}
 	reply.Term = rf.currentTerm
 	reply.Success = true
@@ -583,10 +577,10 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 		} else if args.LeaderCommit < len(rf.Log) - 1{
 			rf.CommitIndex = args.LeaderCommit
 		}
+		// not the raft required but the lab required: send to the ApplyCh
+		// as the commit index might change
+		rf.SendApplyMsg()
 	}
-	// not the raft required but the lab required: send to the ApplyCh
-	// as the commit index might change
-	rf.SendApplyMsg();
 	rf.mu.Unlock()
 }
 func (rf *Raft) SendApplyMsg(){
