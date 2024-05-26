@@ -194,7 +194,7 @@ type AppendEntriesReply	struct	{
 // example RequestVote RPC handler.
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
-	// fmt.Printf("<%v:T%v> get a vote request from %v\n",rf.me,rf.currentTerm,args.CandidateId)
+	fmt.Printf("<%v:T%v> get a vote request from %v\n",rf.me,rf.currentTerm,args.CandidateId)
 	rf.mu.Lock()
 	if args.Term<rf.currentTerm{
 		reply.Term = rf.currentTerm
@@ -208,9 +208,9 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		if Last_Log_Index != -1{
 			Last_Log_Term = rf.Log[len(rf.Log)-1].Term
 		}
-		// fmt.Printf("@@@@@@ vote request from %v term %v > server %v term %v\n",args.CandidateId,args.Term,rf.me,rf.currentTerm)
-		// fmt.Printf("@@@@@@ last log term is %v args last term index %v\n",Last_Log_Term,args.LastLogTerm)
-		// fmt.Printf("@@@@@@ last log index is %v args last log index %v\n",Last_Log_Index,args.LastLogIndex)
+		fmt.Printf("@@@@@@ vote request from %v term %v > server %v term %v\n",args.CandidateId,args.Term,rf.me,rf.currentTerm)
+		fmt.Printf("@@@@@@ last log term is %v args last term index %v\n",Last_Log_Term,args.LastLogTerm)
+		fmt.Printf("@@@@@@ last log index is %v args last log index %v\n",Last_Log_Index,args.LastLogIndex)
 		if args.LastLogTerm > Last_Log_Term || (Last_Log_Index<=args.LastLogIndex && Last_Log_Term==args.LastLogTerm){
 			rf.currentTerm=args.Term
 			rf.state=RaftFollower
@@ -218,21 +218,22 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 			rf.RecvHeartBeat=true	// let this vote as the new leader's first heartbeat
 			reply.Term=args.Term
 			reply.VoteGranted=true
-			// fmt.Printf("send the vote to %v\n",args.CandidateId)
+			fmt.Printf("send the vote to %v\n",args.CandidateId)
 			rf.mu.Unlock()
 			return
 		}
 	}else if args.Term == rf.currentTerm{
+		fmt.Printf("go into the args term equal with rf vote for %v candidateid %v\n",rf.VotedFor,args.CandidateId)
 		// if the term is equal to current term ,generally the vote for must not be -1
-		if rf.VotedFor == args.CandidateId{
+		if rf.VotedFor == -1 || rf.VotedFor == args.CandidateId{
 			Last_Log_Index := len(rf.Log)-1
 			Last_Log_Term := -1
 			if Last_Log_Index != -1{
 				Last_Log_Term = rf.Log[len(rf.Log)-1].Term
 			}
-			// fmt.Printf("@@@@@@ vote request from %v term %v == server %v term %v\n",args.CandidateId,args.Term,rf.me,rf.currentTerm)
-			// fmt.Printf("@@@@@@ last log term is %v args last term index %v\n",Last_Log_Term,args.LastLogTerm)
-			// fmt.Printf("@@@@@@ last log index is %v args last log index %v\n",Last_Log_Index,args.LastLogIndex)
+			fmt.Printf("@@@@@@ vote request from %v term %v == server %v term %v\n",args.CandidateId,args.Term,rf.me,rf.currentTerm)
+			fmt.Printf("@@@@@@ last log term is %v args last term index %v\n",Last_Log_Term,args.LastLogTerm)
+			fmt.Printf("@@@@@@ last log index is %v args last log index %v\n",Last_Log_Index,args.LastLogIndex)
 			if args.LastLogTerm > Last_Log_Term || (Last_Log_Index<=args.LastLogIndex && Last_Log_Term==args.LastLogTerm){
 				rf.currentTerm=args.Term
 				rf.state=RaftFollower
@@ -283,7 +284,7 @@ func (rf *Raft) sendRequestVoteAll(){
 	rf.mu.Lock()
 	// write new info
 	rf.currentTerm+=1
-	// fmt.Printf("%v start vote term %v\n",rf.me,rf.currentTerm);
+	fmt.Printf("%v start vote term %v\n",rf.me,rf.currentTerm);
 	rf.RecvHeartBeat=true
 	rf.state=RaftCandidate
 	rf.CollectVote=1	// vote to me
@@ -311,12 +312,12 @@ func (rf *Raft) sendRequestVoteAll(){
 }
 func (rf *Raft) CollectVoteRes(server int, args *RequestVoteArgs){
 	reply := RequestVoteReply{}
-	// fmt.Printf("$$$$$$ %v try to collect vote from %v\n",rf.me,server)
+	fmt.Printf("$$$$$$ %v try to collect vote from %v\n",rf.me,server)
 	ok	:= rf.sendRequestVote(server,args,&reply)
 	if !ok {
 		return
 	}
-	// fmt.Printf("$$$$$$ %v got a vote from %v\n",rf.me,server)
+	fmt.Printf("$$$$$$ %v got a vote from %v\n",rf.me,server)
 	rf.mu.Lock()
 	if rf.state == RaftFollower || args.Term != rf.currentTerm{	// the state has already been changed
 		rf.mu.Unlock()
@@ -324,6 +325,7 @@ func (rf *Raft) CollectVoteRes(server int, args *RequestVoteArgs){
 	}
 	if reply.Term > rf.currentTerm{	// is old
 		rf.currentTerm=reply.Term
+		rf.VotedFor = -1
 		rf.state=RaftFollower
 		// and the vote granted must be false
 		rf.mu.Unlock()
@@ -339,7 +341,7 @@ func (rf *Raft) CollectVoteRes(server int, args *RequestVoteArgs){
 	}
 	rf.CollectVote +=1
 	if rf.CollectVote > len(rf.peers)/2 {
-		// fmt.Printf("me %v is voted for raft leader with collect %v term %v\n",rf.me,rf.CollectVote,rf.currentTerm)
+		fmt.Printf("me %v is voted for raft leader with collect %v term %v\n",rf.me,rf.CollectVote,rf.currentTerm)
 		rf.state = RaftLeader
 		// after every election，
 		// the nextIndex[] initialized with the leader's lastlogindex + 1
@@ -349,9 +351,9 @@ func (rf *Raft) CollectVoteRes(server int, args *RequestVoteArgs){
 			rf.MatchIndex[i]=0
 		}
 		// the matchIndex[] initialized with all 0
+		fmt.Printf("leader is %v\n",rf.me)
 	}
 	rf.mu.Unlock()
-	// fmt.Printf("leader is %v\n",rf.me)
 	go rf.sendHeartBeatsAll()
 }
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
@@ -379,7 +381,7 @@ func PrintHeartBeatsFrameReply(reply AppendEntriesReply){
 }
 func (rf *Raft) PrintLogEntries(){
 	fmt.Printf("====== ====== ======\n")
-	fmt.Printf("<S%v:L%v:Cmt%v>\t",rf.me,len(rf.Log),rf.CommitIndex)
+	fmt.Printf("<S%v:LogLen%v:Cmt%v:Term%v>\n\t",rf.me,len(rf.Log),rf.CommitIndex,rf.currentTerm)
 	for i:=0;i<len(rf.Log);i++{
 		fmt.Printf("[T%v:C%v]",rf.Log[i].Term,rf.Log[i].Command)
 	}
@@ -458,6 +460,7 @@ func (rf *Raft) sendHeartBeat(server int, args *AppendEntriesArgs){
 	if reply.Term > rf.currentTerm {
 		// fmt.Printf("leader %v receive a msg and change to follower reply term is %v current term is %v\n",rf.me,reply.Term,rf.currentTerm)
 		rf.currentTerm =  reply.Term
+		rf.VotedFor = -1
 		rf.state = RaftFollower
 		rf.mu.Unlock()
 		return
@@ -535,6 +538,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 		
 	}else if args.Term > rf.currentTerm{
 		rf.currentTerm=args.Term
+		rf.VotedFor = -1
 		rf.state= RaftFollower
 	}
 	// add reply false if log doesn't contain any entry at prevLogIndex whose term matches prevLogTerm
@@ -787,3 +791,9 @@ func Make(peers []*labrpc.ClientEnd, me int,
 // 但是问题来了，如果按照这个逻辑，那么后面根据投票的false结果更新自己的term的事情就做不了了
 // 所以需要把这个投票==false的逻辑放在后面。
 // 但是即便如此，这个测例仍然存在问题，不过，已经有一定概率能够成功了
+
+// 继续修bug，观察到一个现象，能够成功的里面，追加的log，是有最新的，例如term31,32左右（反正挺大的），但是失败的，无一例外的，最后的log是term4的
+// 我修改了对应的查看leader的部分，可以确定的是，他是否有及时的选出新的leader，很可能是能否成功的原因
+// 于是继续查看他vote的过程
+// 看上去是因为当term相等的时候，需要判定vote for 是否为-1或者为candidate ID，但是在这一步，始终没能正确的投票出去
+// 注意到，这时候需要所有三个仍然存活的节点都同意投票给他才可以。
