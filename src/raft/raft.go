@@ -186,6 +186,9 @@ type AppendEntriesArgs struct {
 type AppendEntriesReply	struct	{
 	Term	int
 	Success	bool
+	XTerm 	int //term in the conflicting entry (if any)
+    XIndex	int //index of first entry with that term (if any)
+    XLen	int //log length
 }
 
 // example RequestVote RPC handler.
@@ -364,6 +367,9 @@ func PrintHeartBeatsFrameReply(reply AppendEntriesReply){
 	fmt.Printf("====== ====== ======\n")
 	fmt.Printf("\tTerm\t%v\n",reply.Term)
 	fmt.Printf("\tSuccess\t%v\n",reply.Success)
+	fmt.Printf("\tXTerm\t%v\n",reply.XTerm)
+	fmt.Printf("\tXIndex\t%v\n",reply.XIndex)
+	fmt.Printf("\tXLen\t%v\n",reply.XLen)
 	fmt.Printf("====== ====== ======\n")
 }
 // HeartBeats
@@ -391,7 +397,7 @@ func (rf *Raft) sendHeartBeatsAll(){
 					i_th_Pre_Log_Term=rf.Log[i_th_Pre_Log_Index].Term
 				}
 				var new_entries []LogEntry
-				// fmt.Printf("###### leader %v think %v len is %v prev is %v\n",rf.me,i,len(rf.Log),Prev_Log_Index[i])
+				// fmt.Printf("###### leader %v len is %v think %v prev is %v\n",rf.me,len(rf.Log),i,Prev_Log_Index[i])
 				if len(rf.Log)-1 >= Prev_Log_Index[i]+1{
 					new_entries = rf.Log[Prev_Log_Index[i]+1:]
 				}
@@ -435,6 +441,7 @@ func (rf *Raft) sendHeartBeat(server int, args *AppendEntriesArgs){
 	}
 	
 	if reply.Term > rf.currentTerm {
+		// fmt.Printf("leader %v receive a msg and change to follower reply term is %v current term is %v\n",rf.me,reply.Term,rf.currentTerm)
 		rf.currentTerm =  reply.Term
 		rf.state = RaftFollower
 		rf.mu.Unlock()
@@ -450,8 +457,20 @@ func (rf *Raft) sendHeartBeat(server int, args *AppendEntriesArgs){
 			// fmt.Printf("******server %v success,and args.PrevLogIndex is %v len %v\n",server,args.PrevLogIndex,len(args.Entries))
 			// fmt.Printf("******rf match is %v rf next is %v\n",rf.MatchIndex[server],rf.NextIndex[server])
 		} else if reply.Success == false{
-			rf.NextIndex[server] -= 1
-			// seems need retry？？？
+			// seems need retry???
+			if reply.XTerm == -1{
+				rf.NextIndex[server] = reply.XLen	// no conflict, is that possible???
+			} else {
+				conflict_idx := rf.NextIndex[server] - 1
+				for conflict_idx >= 0 && rf.Log[conflict_idx].Term > reply.XTerm{
+					conflict_idx--
+				}
+				if rf.Log[conflict_idx].Term == reply.XTerm{
+					rf.NextIndex[server] = conflict_idx + 1
+				} else {
+					rf.NextIndex[server] = reply.XIndex
+				}
+			}
 		}
 	}
 	// If there exists an N such that N > commitIndex, a majority
@@ -486,6 +505,9 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 // the heart beat is the same as the append entry,but just the log entries are empty
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply){
 	// fmt.Printf("%v receive heart beat term %v cur term %v leader id is %v\n",rf.me,args.Term, rf.currentTerm,args.LeaderId)
+	reply.XTerm=-1
+	reply.XIndex=-1
+	reply.XLen=len(rf.Log)
 	rf.mu.Lock()
 	if args.Term < rf.currentTerm{
 		reply.Term = rf.currentTerm
@@ -516,7 +538,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 		// fmt.Printf("###### server %v here return false args.prev term %v len %v\n",rf.me,args.PrevLogTerm,rf.Log[args.PrevLogIndex].Term)
 		return
 	}
-
+	rf.RecvHeartBeat=true
 	if len(args.Entries)!=0{
 		// fmt.Printf("have receve a log append request with len %v\n",len(args.Entries))
 		// check whether there have any conflict
@@ -529,15 +551,17 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 			}
 		}
 		if conflict_idx >= 0{
+			// fmt.Printf("conflict idx is %v\n",conflict_idx)
 			// delete the existing entry and all that follow it
 			rf.Log = rf.Log[:next_log_index+conflict_idx]
 			rf.Log = append(rf.Log,args.Entries[conflict_idx:]...)
+			reply.XTerm = rf.Log[conflict_idx].Term
+			reply.XIndex = conflict_idx
 		}else{
 			// no conflict
 			rf.Log = append(rf.Log,args.Entries...)
 		}
 	}
-	rf.RecvHeartBeat=true
 	reply.Term = rf.currentTerm
 	reply.Success = true
 	// If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)
@@ -639,7 +663,7 @@ func (rf *Raft) ticker() {
 		rf.mu.Unlock()
 		// pause for a random amount of time between 50 and 350
 		// milliseconds.
-		ms := 300 + (rand.Int63() % 50)	
+		ms := 150 + (rand.Int63() % 200)	
 		// the 2A has a warning of "warning: term changed even though there were no failures"
 		// if I use 10 times per second, the heartbeat should be 100 ms
 		// and only the time of election timeout larger then the 100 ms, that the timeout never happen
