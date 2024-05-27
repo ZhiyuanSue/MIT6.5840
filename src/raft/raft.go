@@ -18,13 +18,13 @@ package raft
 //
 
 import (
-	//	"bytes"
+	"bytes"
 	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
 	"fmt"
-	//	"6.5840/labgob"
+	"6.5840/labgob"
 	"6.5840/labrpc"
 )
 
@@ -117,12 +117,12 @@ func (rf *Raft) GetState() (int, bool) {
 func (rf *Raft) persist() {
 	// Your code here (2C).
 	// Example:
-	// w := new(bytes.Buffer)
-	// e := labgob.NewEncoder(w)
-	// e.Encode(rf.xxx)
-	// e.Encode(rf.yyy)
-	// raftstate := w.Bytes()
-	// rf.persister.Save(raftstate, nil)
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(rf.currentTerm)
+	e.Encode(rf.Log)
+	raftstate := w.Bytes()
+	rf.persister.Save(raftstate, nil)
 }
 
 
@@ -133,17 +133,17 @@ func (rf *Raft) readPersist(data []byte) {
 	}
 	// Your code here (2C).
 	// Example:
-	// r := bytes.NewBuffer(data)
-	// d := labgob.NewDecoder(r)
-	// var xxx
-	// var yyy
-	// if d.Decode(&xxx) != nil ||
-	//    d.Decode(&yyy) != nil {
-	//   error...
-	// } else {
-	//   rf.xxx = xxx
-	//   rf.yyy = yyy
-	// }
+	r := bytes.NewBuffer(data)
+	d := labgob.NewDecoder(r)
+	var currentTerm int
+	var Log []LogEntry
+	if d.Decode(&currentTerm) != nil ||
+	   d.Decode(&Log) != nil {
+		fmt.Printf("<%v> Persist decode fail\n",rf.me)
+	} else {
+		rf.currentTerm = currentTerm
+		rf.Log = Log
+	}
 }
 
 
@@ -219,6 +219,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 			reply.Term=args.Term
 			reply.VoteGranted=true
 			// fmt.Printf("send the vote to %v\n",args.CandidateId)
+			rf.persist()
 			rf.mu.Unlock()
 			return
 		}
@@ -241,6 +242,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 				rf.RecvHeartBeat=true	// let this vote as the new leader's first heartbeat
 				reply.Term=args.Term
 				reply.VoteGranted=true
+				rf.persist()
 				rf.mu.Unlock()
 				return
 			}
@@ -289,6 +291,7 @@ func (rf *Raft) sendRequestVoteAll(){
 	rf.state=RaftCandidate
 	rf.CollectVote=1	// vote to me
 	rf.VotedFor = rf.me
+	rf.persist()
 	// read info from the rf,for the information might change
 	cur_Term := rf.currentTerm
 	Last_Log_Index := len(rf.Log)-1
@@ -331,6 +334,7 @@ func (rf *Raft) CollectVoteRes(server int, args *RequestVoteArgs){
 		rf.VotedFor = -1
 		rf.state=RaftFollower
 		// and the vote granted must be false
+		rf.persist()
 		rf.mu.Unlock()
 		return
 	}
@@ -465,6 +469,7 @@ func (rf *Raft) sendHeartBeat(server int, args *AppendEntriesArgs){
 		rf.currentTerm =  reply.Term
 		rf.VotedFor = -1
 		rf.state = RaftFollower
+		rf.persist()
 		rf.mu.Unlock()
 		return
 		// if he is not the leader ,cannot continue change the commit
@@ -543,6 +548,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 		rf.currentTerm=args.Term
 		rf.VotedFor = -1
 		rf.state= RaftFollower
+		rf.persist()
 	}
 	// add reply false if log doesn't contain any entry at prevLogIndex whose term matches prevLogTerm
 	// if the prevLogIndex have log
@@ -588,6 +594,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 		// delete the existing entry and all that follow it
 		rf.Log = rf.Log[:next_log_index+conflict_idx]
 		rf.Log = append(rf.Log,args.Entries[conflict_idx:]...)
+		rf.persist()
 	}
 	reply.Term = rf.currentTerm
 	reply.Success = true
@@ -650,6 +657,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	index = len(rf.Log)-1
 	term = rf.currentTerm
 	// fmt.Printf("###### after start the leader %v log len is %v term is %v\n",rf.me,index,term)
+	rf.persist()
 	rf.mu.Unlock()
 
 	return index, term, isLeader
