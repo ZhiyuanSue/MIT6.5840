@@ -119,6 +119,7 @@ func (rf *Raft) persist() {
 	// Example:
 	w := new(bytes.Buffer)
 	e := labgob.NewEncoder(w)
+	e.Encode(rf.VotedFor)
 	e.Encode(rf.currentTerm)
 	e.Encode(rf.Log)
 	raftstate := w.Bytes()
@@ -135,12 +136,15 @@ func (rf *Raft) readPersist(data []byte) {
 	// Example:
 	r := bytes.NewBuffer(data)
 	d := labgob.NewDecoder(r)
+	var VotedFor int
 	var currentTerm int
 	var Log []LogEntry
-	if d.Decode(&currentTerm) != nil ||
-	   d.Decode(&Log) != nil {
+	if	d.Decode(&VotedFor) != nil ||
+		d.Decode(&currentTerm) != nil ||
+		d.Decode(&Log) != nil {
 		fmt.Printf("<%v> Persist decode fail\n",rf.me)
 	} else {
+		rf.VotedFor = VotedFor
 		rf.currentTerm = currentTerm
 		rf.Log = Log
 	}
@@ -203,17 +207,18 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		return
 	}else if args.Term >rf.currentTerm{
 		// for the new term, VotedFor must be null in this term,vote it
+		rf.currentTerm=args.Term
+		rf.persist()
+		rf.state=RaftFollower
 		Last_Log_Index := len(rf.Log)-1
 		Last_Log_Term := -1
 		if Last_Log_Index != -1{
 			Last_Log_Term = rf.Log[len(rf.Log)-1].Term
 		}
-		// fmt.Printf("@@@@@@ vote request from %v term %v > server %v term %v\n",args.CandidateId,args.Term,rf.me,rf.currentTerm)
-		// fmt.Printf("@@@@@@ last log term is %v args last term index %v\n",Last_Log_Term,args.LastLogTerm)
-		// fmt.Printf("@@@@@@ last log index is %v args last log index %v\n",Last_Log_Index,args.LastLogIndex)
+		// fmt.Printf("@@@@@@<%v> vote request from %v term %v > server %v term %v\n",rf.me,args.CandidateId,args.Term,rf.me,rf.currentTerm)
+		// fmt.Printf("@@@@@@<%v> last log term is %v args last term index %v\n",rf.me,Last_Log_Term,args.LastLogTerm)
+		// fmt.Printf("@@@@@@<%v> last log index is %v args last log index %v\n",rf.me,Last_Log_Index,args.LastLogIndex)
 		if args.LastLogTerm > Last_Log_Term || (Last_Log_Index<=args.LastLogIndex && Last_Log_Term==args.LastLogTerm){
-			rf.currentTerm=args.Term
-			rf.state=RaftFollower
 			rf.VotedFor=args.CandidateId
 			rf.RecvHeartBeat=true	// let this vote as the new leader's first heartbeat
 			reply.Term=args.Term
@@ -311,9 +316,6 @@ func (rf *Raft) sendRequestVoteAll(){
 			go rf.CollectVoteRes(i,&args)	// we have to send all the infos to other server ,so we must use other thread ,not a sequence way
 		}
 	}
-	if rf.state != RaftLeader{
-		rf.VotedFor = -1
-	}
 	rf.mu.Unlock()
 }
 func (rf *Raft) CollectVoteRes(server int, args *RequestVoteArgs){
@@ -324,6 +326,9 @@ func (rf *Raft) CollectVoteRes(server int, args *RequestVoteArgs){
 		return
 	}
 	// fmt.Printf("$$$$$$ %v got a vote from %v\n",rf.me,server)
+	// if reply.VoteGranted == false{
+	// 	fmt.Printf("this vote is fault\n");
+	// }
 	rf.mu.Lock()
 	if rf.state == RaftFollower || args.Term != rf.currentTerm{	// the state has already been changed
 		rf.mu.Unlock()
@@ -489,10 +494,10 @@ func (rf *Raft) sendHeartBeat(server int, args *AppendEntriesArgs){
 				rf.NextIndex[server] = reply.XLen	// no conflict, is that possible???
 			} else {
 				conflict_idx := rf.NextIndex[server] - 1
-				for conflict_idx >= 0 && rf.Log[conflict_idx].Term > reply.XTerm{
+				for conflict_idx > 0 && rf.Log[conflict_idx].Term > reply.XTerm{
 					conflict_idx--
 				}
-				if rf.Log[conflict_idx].Term == reply.XTerm{
+				if conflict_idx>=0 && rf.Log[conflict_idx].Term == reply.XTerm{
 					rf.NextIndex[server] = conflict_idx + 1
 				} else {
 					rf.NextIndex[server] = reply.XIndex
@@ -735,13 +740,13 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.Log[0].Term = 0
 	rf.CommitIndex= 0
 	rf.LastApplied=0
-	for i:=0;i<len(peers);i++{
-		rf.NextIndex=append(rf.NextIndex,0)
-		rf.MatchIndex=append(rf.MatchIndex,0)
-	}
+	
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
-
+	for i:=0;i<len(peers);i++{
+		rf.NextIndex=append(rf.NextIndex,len(rf.Log))
+		rf.MatchIndex=append(rf.MatchIndex,0)
+	}
 	// start ticker goroutine to start elections
 	go rf.ticker()
 
@@ -810,3 +815,9 @@ func Make(peers []*labrpc.ClientEnd, me int,
 // 注意到，这时候需要所有三个仍然存活的节点都同意投票给他才可以。
 
 // 最后我加了一个设计，也就是每次投票之后，查看自己是否是leader，如果不是，就清除掉投给自己的票。
+
+// 2C
+// 2C其实按照给定的注释做就好了
+// 但是我还是遇到了几个bug，一个是数组越界，反正就是少了检查，反正他log肯定不可能小于0，所以换个检查也能过
+// 另一个bug，还是一样的问题，不知道为什么，没有能够选出leader。
+// 我发现了问题所在，就是说，他如果raft收到了一个vote请求，term更大的，无论如何，都应该更新他的term，而不是只有满足条件判断之后，才更新
