@@ -527,7 +527,7 @@ func (rf *Raft) sendHeartBeat(server int, args *AppendEntriesArgs){
 		}
 	}
 	// need to send Apply Msg to ApplyCh
-	rf.SendApplyMsg()
+	// rf.SendApplyMsg()
 	rf.mu.Unlock()
 }
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
@@ -613,7 +613,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 		}
 		// not the raft required but the lab required: send to the ApplyCh
 		// as the commit index might change
-		rf.SendApplyMsg()
+		// rf.SendApplyMsg()
 	}
 	rf.mu.Unlock()
 }
@@ -688,24 +688,28 @@ func (rf *Raft) killed() bool {
 }
 
 func (rf *Raft) ticker() {
+	ticker_count := 0
 	for rf.killed() == false {
-
 		// Your code here (2A)
 		// Check if a leader election should be started.
-		rf.mu.Lock()
-		if rf.state == RaftFollower || rf.state == RaftCandidate{
-			if rf.RecvHeartBeat == false {
-				// fmt.Printf("server %v find a timeout \n",rf.me)
-				go rf.sendRequestVoteAll()
-			}else{
-				rf.RecvHeartBeat = false
+		if ticker_count%25==0{
+			rf.mu.Lock()
+			if rf.state == RaftFollower || rf.state == RaftCandidate{
+				if rf.RecvHeartBeat == false {
+					// fmt.Printf("server %v find a timeout \n",rf.me)
+					go rf.sendRequestVoteAll()
+				}else{
+					rf.RecvHeartBeat = false
+				}
 			}
+			rf.mu.Unlock()
 		}
-		rf.mu.Unlock()
+		ticker_count++
+		rf.SendApplyMsg()
 		// rf.PrintLogEntries()
 		// pause for a random amount of time between 50 and 350
 		// milliseconds.
-		ms := 150 + (rand.Int63() % 200)	
+		ms := 6 + (rand.Int63() % 8)
 		// the 2A has a warning of "warning: term changed even though there were no failures"
 		// if I use 10 times per second, the heartbeat should be 100 ms
 		// and only the time of election timeout larger then the 100 ms, that the timeout never happen
@@ -821,3 +825,13 @@ func Make(peers []*labrpc.ClientEnd, me int,
 // 但是我还是遇到了几个bug，一个是数组越界，反正就是少了检查，反正他log肯定不可能小于0，所以换个检查也能过
 // 另一个bug，还是一样的问题，不知道为什么，没有能够选出leader。
 // 我发现了问题所在，就是说，他如果raft收到了一个vote请求，term更大的，无论如何，都应该更新他的term，而不是只有满足条件判断之后，才更新
+
+// 但是还是过不去，额，emmm简单来说figure 8 unreliable他偶尔会挂掉
+// 我查到了一个记录：https://github.com/skywircL/MIT6.824/blob/master/docs/%E9%80%9A%E5%85%B3MIT6.5840(6.824)Lab2%20Raft%E7%9A%84%E6%AD%A3%E7%A1%AE%E5%A7%BF%E5%8A%BF.md
+// 我声明，我没有抄袭，但是我确实参考了一些资料来调试bug。
+// 这个他说过不了figure 8 unreliable 是因为性能不好，并发比较差。。。
+// 他说异步提交即可。。。听上去可行
+// 我试图在ticker里面增加msgcommit，但是，2B测试性能反而更差了，最开始我以为是由于commit占用太多时间
+// 然后我增加了一个counter，就每三次ticker才提交，变得更差了
+// 所以我觉得应该是更低一些。所以设置了，更低的速率就发一个，不过好像还是过不去。
+// 另一个说法是，需要在恢复过来的时候再等几秒钟，让重连的认清一下状况。。。但是并没有什么用
