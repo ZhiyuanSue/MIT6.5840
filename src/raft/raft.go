@@ -626,7 +626,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 func (rf *Raft) SendApplyMsg(){
 	// fmt.Printf("server %v have a commit %v last applied %v\n",rf.me, rf.CommitIndex,rf.LastApplied)
 	// rf.PrintLogEntries()
-	for rf.CommitIndex > rf.LastApplied {
+	for rf.CommitIndex > rf.LastApplied && len(rf.Log) > rf.LastApplied {
 		rf.LastApplied += 1
 		new_apply_msg := ApplyMsg{
 			CommandValid	: true,
@@ -710,7 +710,7 @@ func (rf *Raft) ticker() {
 				}
 			}
 		}
-		if ticker_count%5==0{
+		if ticker_count%7==0{
 			rf.SendApplyMsg()
 		}
 		ticker_count++
@@ -868,5 +868,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 // 总之，我认为，他的apply应该还是有问题的。于是我试图减少sendapply的频率，这在第二轮的测试中，减少了apply error
 // 所以可以认为，之前有问题，就是因为，单纯的因为，频率太高了，但是仍然出现了index out range
+// 最后我简单粗暴地把每5次apply，每25次timeout给改成了24次apply，25次timeout，每次大概睡6+rand in 8我认为原因还是出在我没有使用两个定时函数，导致两者不是互质然后容易同时发生，同时发生的时候，容易寄了。
+// 但是测试这么多次，仍然不能说明他是bug free的，我认为这里面还是有问题。
 // 2D
 // 
