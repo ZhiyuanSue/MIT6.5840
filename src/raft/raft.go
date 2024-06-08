@@ -394,7 +394,12 @@ func PrintHeartBeatsFrameReply(reply AppendEntriesReply){
 func (rf *Raft) PrintLogEntries(){
 	fmt.Printf("====== ====== ======\n")
 	fmt.Printf("<S%v:LogLen%v:Cmt%v:Term%v>\n\t",rf.me,len(rf.Log),rf.CommitIndex,rf.currentTerm)
-	for i:=0;i<len(rf.Log);i++{
+	// start:=0
+	start:=len(rf.Log)-10
+	if start < 0{
+		start = 0
+	}
+	for i:=start;i<len(rf.Log);i++{
 		fmt.Printf("[T%v:C%v]",rf.Log[i].Term,rf.Log[i].Command)
 	}
 	fmt.Printf("\n")
@@ -403,7 +408,7 @@ func (rf *Raft) PrintLogEntries(){
 // HeartBeats
 func (rf *Raft) sendHeartBeatsAll(){
 	// time should be the same as the ticker
-	// rf.PrintLogEntries()
+	rf.PrintLogEntries()
 	for rf.killed() == false && rf.state == RaftLeader {
 		// fmt.Printf("%v send heartbeat\n",rf.me);
 		var Prev_Log_Index []int
@@ -555,6 +560,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 		rf.state= RaftFollower
 		rf.persist()
 	}
+	rf.RecvHeartBeat=true
 	// add reply false if log doesn't contain any entry at prevLogIndex whose term matches prevLogTerm
 	// if the prevLogIndex have log
 	if args.PrevLogIndex >= len(rf.Log){	// e.g. only one log,the len is 1,and the prevlogindex must be 0,it must less than len
@@ -572,7 +578,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 		// meet a problem that the len is larger then the leader,hance the return len might be larger then the nextindex[server]
 		reply.XTerm = rf.Log[args.PrevLogIndex].Term
 		var xindex int
-		for conflict_idx := args.PrevLogIndex; rf.Log[conflict_idx].Term == rf.currentTerm;conflict_idx--{
+		for conflict_idx := args.PrevLogIndex; rf.Log[conflict_idx].Term == rf.Log[args.PrevLogIndex].Term;conflict_idx--{
 			xindex = conflict_idx
 		}
 		reply.XIndex= xindex
@@ -580,7 +586,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 		// fmt.Printf("###### server %v here return false args.prev term %v rf term %v\n",rf.me,args.PrevLogTerm,rf.Log[args.PrevLogIndex].Term)
 		return
 	}
-	rf.RecvHeartBeat=true
+	
 	// prev check is for the log before the prev_log_index
 	// the following is used for the logs after the next_log_index
 	if len(args.Entries)!=0{
@@ -661,7 +667,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	})
 	index = len(rf.Log)-1
 	term = rf.currentTerm
-	// fmt.Printf("###### after start the leader %v log len is %v term is %v\n",rf.me,index,term)
+	// fmt.Printf("###### after start the leader %v log len is %v term is %v command is %v\n",rf.me,index,term,command)
 	rf.persist()
 	rf.mu.Unlock()
 
@@ -692,8 +698,9 @@ func (rf *Raft) ticker() {
 	for rf.killed() == false {
 		// Your code here (2A)
 		// Check if a leader election should be started.
+		rf.mu.Lock()
 		if ticker_count%25==0{
-			rf.mu.Lock()
+			
 			if rf.state == RaftFollower || rf.state == RaftCandidate{
 				if rf.RecvHeartBeat == false {
 					// fmt.Printf("server %v find a timeout \n",rf.me)
@@ -702,11 +709,11 @@ func (rf *Raft) ticker() {
 					rf.RecvHeartBeat = false
 				}
 			}
-			rf.mu.Unlock()
 		}
 		ticker_count++
 		rf.SendApplyMsg()
 		// rf.PrintLogEntries()
+		rf.mu.Unlock()
 		// pause for a random amount of time between 50 and 350
 		// milliseconds.
 		ms := 6 + (rand.Int63() % 8)
@@ -826,7 +833,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 // 另一个bug，还是一样的问题，不知道为什么，没有能够选出leader。
 // 我发现了问题所在，就是说，他如果raft收到了一个vote请求，term更大的，无论如何，都应该更新他的term，而不是只有满足条件判断之后，才更新
 
-// 但是还是过不去，额，emmm简单来说figure 8 unreliable他偶尔会挂掉
+// 但是还是过不去，额，emmm简单来说figure 8 unreliable他偶尔会挂掉,我查找资料之后发现这是一个很常见的问题。
 // 我查到了一个记录：https://github.com/skywircL/MIT6.824/blob/master/docs/%E9%80%9A%E5%85%B3MIT6.5840(6.824)Lab2%20Raft%E7%9A%84%E6%AD%A3%E7%A1%AE%E5%A7%BF%E5%8A%BF.md
 // 我声明，我没有抄袭，但是我确实参考了一些资料来调试bug。
 // 这个他说过不了figure 8 unreliable 是因为性能不好，并发比较差。。。
@@ -835,3 +842,15 @@ func Make(peers []*labrpc.ClientEnd, me int,
 // 然后我增加了一个counter，就每三次ticker才提交，变得更差了
 // 所以我觉得应该是更低一些。所以设置了，更低的速率就发一个，不过好像还是过不去。
 // 另一个说法是，需要在恢复过来的时候再等几秒钟，让重连的认清一下状况。。。但是并没有什么用
+
+// 观察到的一个现象，我在start函数那里做了一个打印，而每次发送心跳（leader）或者触发ticker检查（非leader）的时候，我增加了一次打印
+// 首先，增加这个打印之后，他触发fail的次数明显少了，我在第15次才触发了一次fail。（我不确定是否为运气问题）
+// 第二个，在fail之前的情况，是他start之后打印次数明显比前面正常的情况多了。就是说，在这之前，一直都是很快就确认了我已经提交正确且成功了，但是现在，即使我的集群，四个节点，或者三个节点，查看记录，都已经出现了出错的那条记录，按道理来说，这时候，集群已经达成了共识，就是说我这个记录已经提交上去了，但是，他会报错。
+// 我继续查看到底是哪里出错了，figure8里面的大循环貌似并没有出错，反倒是，在大循环结束之后，需要将所有的节点都连上的时候，出现了问题。
+// 看上去是快恢复的逻辑出现了问题。
+// 而且我也确实观察到一个现象，就是掉线的几个节点，落后的进度非常的多，说明在快速恢复的代码上存在问题。
+
+// 另外我在试图打印的时候，还碰到了index有问题，确认为，没有把打印函数放在锁的内容里面了，但是同时也发现，applymsg发送函数也没有放在锁的内容里面。所以，我也更改了这个内容。
+
+// 6.8: 终于发现了问题所在，append entries的时候，xindex指的是xterm的起始的index的位置，因此结束for循环的条件不应该为跟rf.currentTerm比较是否相等，而是应该跟prevlogindex的term相比较。
+// 目前，大概几十次的重试运行Figure8 unreliable均没有问题。
