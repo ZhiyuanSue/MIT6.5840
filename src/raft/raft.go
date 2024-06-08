@@ -408,7 +408,7 @@ func (rf *Raft) PrintLogEntries(){
 // HeartBeats
 func (rf *Raft) sendHeartBeatsAll(){
 	// time should be the same as the ticker
-	rf.PrintLogEntries()
+	// rf.PrintLogEntries()
 	for rf.killed() == false && rf.state == RaftLeader {
 		// fmt.Printf("%v send heartbeat\n",rf.me);
 		var Prev_Log_Index []int
@@ -854,3 +854,9 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 // 6.8: 终于发现了问题所在，append entries的时候，xindex指的是xterm的起始的index的位置，因此结束for循环的条件不应该为跟rf.currentTerm比较是否相等，而是应该跟prevlogindex的term相比较。
 // 目前，大概几十次的重试运行Figure8 unreliable均没有问题。
+// 另外，我修复了一个问题，就是心跳true和false的设置的问题，在AppendEntries函数中，如果一个follower落后很多，当他收到来自于leader的信息的时候，他一定会认为收到了心跳
+// 而在我原先的实现中，他如果落后了挺多，就会处理了xterm的逻辑之后立马就返回，而心跳位的位置放在后面。
+// 这会导致，如果一个follower落后了太多，他会一直没有处理心跳，从而触发选举逻辑。
+// 解决办法是，将这个心跳的判断放在之前。
+// 2D
+// 
