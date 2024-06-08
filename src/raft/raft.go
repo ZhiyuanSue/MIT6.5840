@@ -710,8 +710,10 @@ func (rf *Raft) ticker() {
 				}
 			}
 		}
+		if ticker_count%5==0{
+			rf.SendApplyMsg()
+		}
 		ticker_count++
-		rf.SendApplyMsg()
 		// rf.PrintLogEntries()
 		rf.mu.Unlock()
 		// pause for a random amount of time between 50 and 350
@@ -858,5 +860,13 @@ func Make(peers []*labrpc.ClientEnd, me int,
 // 而在我原先的实现中，他如果落后了挺多，就会处理了xterm的逻辑之后立马就返回，而心跳位的位置放在后面。
 // 这会导致，如果一个follower落后了太多，他会一直没有处理心跳，从而触发选举逻辑。
 // 解决办法是，将这个心跳的判断放在之前。
+
+// 网上找了个脚本，https://gist.github.com/JJGO/0d73540ef7cc2f066cb535156b7cbdab
+// 在这里，使用python并行运行，可以大幅度的减少我的测试时间
+// 我测试了1000次之后，发现造成了5个错误。
+// 分别是3次apply error，一次send apply的时候，有index out range，还有一次则依然是之前那个figure 8 unreliable
+
+// 总之，我认为，他的apply应该还是有问题的。于是我试图减少sendapply的频率，这在第二轮的测试中，减少了apply error
+// 所以可以认为，之前有问题，就是因为，单纯的因为，频率太高了，但是仍然出现了index out range
 // 2D
 // 
