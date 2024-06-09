@@ -157,7 +157,9 @@ func (rf *Raft) readPersist(data []byte) {
 // that index. Raft should now trim its log as much as possible.
 func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	// Your code here (2D).
-
+	rf.mu.Lock()
+	
+	rf.mu.Unlock()
 }
 
 
@@ -336,7 +338,7 @@ func (rf *Raft) CollectVoteRes(server int, args *RequestVoteArgs){
 	}
 	if reply.Term > rf.currentTerm{	// is old
 		rf.currentTerm=reply.Term
-		rf.VotedFor = -1
+		// rf.VotedFor = -1
 		rf.state=RaftFollower
 		// and the vote granted must be false
 		rf.persist()
@@ -556,7 +558,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 		
 	}else if args.Term > rf.currentTerm{
 		rf.currentTerm=args.Term
-		rf.VotedFor = -1
+		// rf.VotedFor = -1
 		rf.state= RaftFollower
 		rf.persist()
 	}
@@ -625,16 +627,20 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 }
 func (rf *Raft) SendApplyMsg(){
 	// fmt.Printf("server %v have a commit %v last applied %v\n",rf.me, rf.CommitIndex,rf.LastApplied)
+	cmt_Index:=rf.CommitIndex
+	Last_Applied:=rf.LastApplied
 	// rf.PrintLogEntries()
-	for rf.CommitIndex > rf.LastApplied && len(rf.Log) > rf.LastApplied {
-		rf.LastApplied += 1
+	for cmt_Index > Last_Applied && len(rf.Log) > Last_Applied && len(rf.Log) > cmt_Index {
+		Last_Applied += 1
+		cmd := rf.Log[Last_Applied].Command
 		new_apply_msg := ApplyMsg{
 			CommandValid	: true,
-			Command			: rf.Log[rf.LastApplied].Command,
-			CommandIndex	: rf.LastApplied,
+			Command			: cmd,
+			CommandIndex	: Last_Applied,
 		}
 		rf.ApplyCh <- new_apply_msg
 	}
+	rf.LastApplied=Last_Applied
 }
 
 // the service using Raft (e.g. a k/v server) wants to start
@@ -746,7 +752,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	// Your initialization code here (2A, 2B, 2C).
 	rf.state = RaftFollower
 	rf.currentTerm=0
-	rf.VotedFor=-1
+	rf.VotedFor = -1
 	rf.RecvHeartBeat=false
 	rf.ApplyCh = applyCh
 	rf.Log=append(rf.Log,LogEntry{})
