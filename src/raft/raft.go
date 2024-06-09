@@ -189,8 +189,10 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	// Your code here (2D).
 	rf.mu.Lock()
 	if (index <= rf.CommitIndex && index > rf.LastIncludeIndex){
-		rf.Log=append(rf.Log,LogEntry{})
+		rf.LastIncludeTerm = rf.Log[rf.index_map_f(index)].Term
+		rf.Log = rf.Log[rf.index_map_f(index):]
 		rf.LastIncludeIndex=index
+		rf.SnapShot = snapshot
 	}
 	
 	rf.mu.Unlock()
@@ -924,3 +926,4 @@ func Make(peers []*labrpc.ClientEnd, me int,
 // 在使用上述的配置的时候，剩下的问题只有index out range。额，再说吧
 // 2D
 // 首先我先来添加相应的数据结构，主要是新的installsnapshot rpc，同时，看上去，需要在rf结构体里面增加对应的内容
+// 然后我遇到的一个问题在于他死锁了，查看一堆资料之后，发现，上面把applymsg全都放到锁里面不合适，因此，我修改了sendapplymsg的方式。
