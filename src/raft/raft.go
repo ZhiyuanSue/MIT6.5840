@@ -127,8 +127,10 @@ func (rf *Raft) persist() {
 	e.Encode(rf.VotedFor)
 	e.Encode(rf.currentTerm)
 	e.Encode(rf.Log)
+	e.Encode(rf.LastIncludeIndex)
+	e.Encode(rf.LastIncludeTerm)
 	raftstate := w.Bytes()
-	rf.persister.Save(raftstate, nil)
+	rf.persister.Save(raftstate, rf.SnapShot)
 }
 
 
@@ -144,14 +146,20 @@ func (rf *Raft) readPersist(data []byte) {
 	var VotedFor int
 	var currentTerm int
 	var Log []LogEntry
+	var LastIncludeIndex int
+	var LastIncludeTerm int
 	if	d.Decode(&VotedFor) != nil ||
 		d.Decode(&currentTerm) != nil ||
-		d.Decode(&Log) != nil {
+		d.Decode(&Log) != nil ||
+		d.Decode(&LastIncludeIndex)!= nil ||
+		d.Decode(&LastIncludeTerm)!= nil {
 		fmt.Printf("<%v> Persist decode fail\n",rf.me)
 	} else {
 		rf.VotedFor = VotedFor
 		rf.currentTerm = currentTerm
 		rf.Log = Log
+		rf.LastIncludeIndex = LastIncludeIndex
+		rf.LastIncludeTerm = LastIncludeTerm
 	}
 }
 
@@ -197,7 +205,9 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	
 	rf.mu.Unlock()
 }
+func (rf *Raft) sendSnapShot(server int){
 
+}
 
 // example RequestVote RPC arguments structure.
 // field names must start with capital letters!
@@ -467,26 +477,28 @@ func (rf *Raft) sendHeartBeatsAll(){
 				// fmt.Printf("prev log index is %v\n",i_th_Pre_Log_Index)
 				if rf.index_map_f(i_th_Pre_Log_Index) > -1{
 					i_th_Pre_Log_Term=rf.Log[rf.index_map_f(i_th_Pre_Log_Index)].Term
+					var new_entries []LogEntry
+					// fmt.Printf("###### leader %v len is %v think %v prev is %v\n",rf.me,len(rf.Log),i,Prev_Log_Index[i])
+					if len(rf.Log)-1 >= rf.index_map_f(i_th_Pre_Log_Index)+1{
+						new_entries = rf.Log[rf.index_map_f(i_th_Pre_Log_Index)+1:]
+					}
+					args := AppendEntriesArgs{
+						Term:	cur_Term,
+						LeaderId:	rf.me,
+						PrevLogIndex:	i_th_Pre_Log_Index,
+						PrevLogTerm:	i_th_Pre_Log_Term,
+						Entries:	new_entries,
+						LeaderCommit:	commit_idx,
+					}
+					
+					// if len(new_entries)>0{
+					// 	fmt.Printf("====== send append to server %v prev log index is %v\n",i,i_th_Pre_Log_Index)
+					// 	PrintHeartBeatsFrameArgs(args)
+					// }
+					go rf.sendHeartBeat(i,&args)	// also use other threads to deal with the 
+				}else{	//the rf.index_map_f(i_th_Pre_Log_Index) < -1 means the position is trimmed
+					go rf.sendSnapShot(i)
 				}
-				var new_entries []LogEntry
-				// fmt.Printf("###### leader %v len is %v think %v prev is %v\n",rf.me,len(rf.Log),i,Prev_Log_Index[i])
-				if len(rf.Log)-1 >= rf.index_map_f(i_th_Pre_Log_Index)+1{
-					new_entries = rf.Log[rf.index_map_f(i_th_Pre_Log_Index)+1:]
-				}
-				args := AppendEntriesArgs{
-					Term:	cur_Term,
-					LeaderId:	rf.me,
-					PrevLogIndex:	i_th_Pre_Log_Index,
-					PrevLogTerm:	i_th_Pre_Log_Term,
-					Entries:	new_entries,
-					LeaderCommit:	commit_idx,
-				}
-				
-				// if len(new_entries)>0{
-				// 	fmt.Printf("====== send append to server %v prev log index is %v\n",i,i_th_Pre_Log_Index)
-				// 	PrintHeartBeatsFrameArgs(args)
-				// }
-				go rf.sendHeartBeat(i,&args)	// also use other threads to deal with the 
 			}
 		}
 		rf.mu.Unlock()
@@ -809,6 +821,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
+	rf.SnapShot = persister.ReadSnapshot()
 	for i:=0;i<len(peers);i++{
 		rf.NextIndex=append(rf.NextIndex,rf.index_map_f_1(len(rf.Log)))
 		rf.MatchIndex=append(rf.MatchIndex,0)
