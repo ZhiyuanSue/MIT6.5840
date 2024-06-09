@@ -201,6 +201,9 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 		rf.Log = rf.Log[rf.index_map_f(index):]
 		rf.LastIncludeIndex=index
 		rf.SnapShot = snapshot
+		if rf.LastApplied < index {
+			rf.LastApplied = index
+		}
 	}
 	
 	rf.mu.Unlock()
@@ -571,7 +574,7 @@ func (rf *Raft) sendHeartBeat(server int, args *AppendEntriesArgs){
 			if i==rf.me{
 				total_num++
 			}else{
-				if rf.MatchIndex[i]>=N && rf.Log[rf.index_map_f(N)].Term ==rf.currentTerm{
+				if rf.MatchIndex[i]>=N && rf.index_map_f(N) > -1 && rf.Log[rf.index_map_f(N)].Term ==rf.currentTerm{
 					total_num++
 				}
 			}
@@ -821,6 +824,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
+	rf.CommitIndex=rf.LastIncludeIndex
+	rf.LastApplied=rf.LastIncludeIndex
 	rf.SnapShot = persister.ReadSnapshot()
 	for i:=0;i<len(peers);i++{
 		rf.NextIndex=append(rf.NextIndex,rf.index_map_f_1(len(rf.Log)))
