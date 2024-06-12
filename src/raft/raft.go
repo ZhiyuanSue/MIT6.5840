@@ -258,7 +258,18 @@ func (rf *Raft) ReplySnapShot(args *InstallSnapshotArgs,reply *InstallSnapshotRe
 	// start from 6/
 
 	//6/ if existing log entry has same index and term
-
+	have_log_entry:=false
+	if rf.index_map_f(args.LastIncludeIndex)>=0 && rf.index_map_f(args.LastIncludeIndex) <= len(rf.Log)-1 {
+		if rf.Log[rf.index_map_f(args.LastIncludeTerm)].Term == args.LastIncludeTerm{
+			have_log_entry=true
+		}
+	}
+	if have_log_entry{
+		rf.Log= rf.Log[rf.index_map_f(args.LastIncludeIndex):]
+	}else{
+		// clear the rf.Log
+		rf.Log= make([]LogEntry,0)
+	}
 	//update
 	rf.SnapShot = args.Data
 	rf.LastIncludeIndex = args.LastIncludeIndex
