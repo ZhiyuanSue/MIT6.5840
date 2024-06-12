@@ -168,12 +168,12 @@ type InstallSnapshotArgs struct {
 	LeaderId int
 	LastIncludeIndex int
 	LastIncludeTerm int
-	offset int	
+	Offset int	
 		// as Hint says that:Send the entire snapshot in a single InstallSnapshot RPC. 
 		// Don't implement Figure 13's offset mechanism for splitting up the snapshot.
 		// So I think offset and done field is useless here
-	data []byte
-	done bool
+	Data []byte
+	Done bool
 }
 type InstallSnapshotReply struct {
 	Term int
@@ -209,7 +209,39 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	rf.mu.Unlock()
 }
 func (rf *Raft) sendSnapShot(server int){
+	rf.mu.Lock()
+	args := InstallSnapshotArgs{
+		Term	:	rf.currentTerm,
+		LeaderId	:	rf.me,
+		LastIncludeIndex	:	rf.LastIncludeIndex,
+		LastIncludeTerm	:	rf.LastIncludeTerm,
+		Offset	:	0,
+		Data	:	rf.SnapShot,
+		Done	:	true,
+	}
+	reply := InstallSnapshotReply{}
 
+	rf.mu.Unlock()
+	ok := rf.peers[server].Call("Raft.ReplySnapShot", &args, &reply)
+	rf.mu.Lock()
+	if ok{
+		if(reply.Term > rf.currentTerm){
+			rf.currentTerm=reply.Term
+			rf.state = RaftFollower
+			rf.RecvHeartBeat = true	// as the new leader's heartbeat
+			rf.VotedFor = -1
+			rf.persist()
+		}else{
+			// install the snapshot successfully, update the nextindex
+			rf.NextIndex[server] = rf.LastIncludeIndex + 1
+		}	
+	}
+	rf.mu.Unlock()
+}
+
+func (rf *Raft) ReplySnapShot(args *InstallSnapshotArgs,reply *InstallSnapshotReply){
+	// This function sometimes is like the AppendEntries, it must update something ,such as the recv heart beat flag
+	
 }
 
 // example RequestVote RPC arguments structure.
@@ -550,12 +582,15 @@ func (rf *Raft) sendHeartBeat(server int, args *AppendEntriesArgs){
 			if reply.XTerm == -1{
 				// fmt.Printf("reply's xlen is %v\n",reply.XLen)
 				rf.NextIndex[server] = reply.XLen	// no conflict, is that possible???
+				// we update the new nextindex , and we do no't update ,but update it at next round 
 			} else {
+				// Actually, the index at follower must exist in real log, as it must commited
+				// but might not in the leader, for it might be trimmed,so this 
 				conflict_idx := rf.NextIndex[server] - 1
-				for conflict_idx > 0 && rf.Log[rf.index_map_f(conflict_idx)].Term > reply.XTerm{
+				for rf.index_map_f(conflict_idx) > 0 && rf.Log[rf.index_map_f(conflict_idx)].Term > reply.XTerm{
 					conflict_idx--
 				}
-				if conflict_idx>=0 && rf.Log[rf.index_map_f(conflict_idx)].Term == reply.XTerm{
+				if rf.index_map_f(conflict_idx)>=0 && rf.Log[rf.index_map_f(conflict_idx)].Term == reply.XTerm{
 					rf.NextIndex[server] = conflict_idx + 1
 				} else {
 					rf.NextIndex[server] = reply.XIndex
@@ -624,7 +659,12 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 		return
 	}
 	// if have the log but the log term is not match
-	if args.PrevLogIndex >= 0 && args.PrevLogTerm != rf.Log[rf.index_map_f(args.PrevLogIndex)].Term{
+	// actually, the follower's log is trimmed but not committed case will never happen
+	// I mean no need to check the rf.Log[rf.index_map_f(args.PrevLogIndex)].Term is exist or not
+	if rf.index_map_f(args.PrevLogIndex) < 0 {
+		fmt.Printf("the rf.index_map_f(args.PrevLogIndex) <map-|%v:no_map-|%v> is less then 0, not in consider\n",rf.index_map_f(args.PrevLogIndex),args.PrevLogIndex)
+		rf.PrintLogEntries()
+	}else if args.PrevLogTerm != rf.Log[rf.index_map_f(args.PrevLogIndex)].Term{
 		// remember that the args.PervLogIndex might be -1
 		reply.Term = rf.currentTerm
 		reply.Success = false
