@@ -210,6 +210,7 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 }
 func (rf *Raft) sendSnapShot(server int){
 	rf.mu.Lock()
+	// rf.PrintLogEntries()
 	args := InstallSnapshotArgs{
 		Term	:	rf.currentTerm,
 		LeaderId	:	rf.me,
@@ -233,6 +234,7 @@ func (rf *Raft) sendSnapShot(server int){
 			rf.persist()
 		}else{
 			// install the snapshot successfully, update the nextindex
+			// fmt.Printf("send the snapshot successfully and rf.LastIncludeIndex is %v\n",rf.LastIncludeIndex)
 			rf.NextIndex[server] = rf.LastIncludeIndex + 1
 		}	
 	}
@@ -260,7 +262,7 @@ func (rf *Raft) ReplySnapShot(args *InstallSnapshotArgs,reply *InstallSnapshotRe
 	//6/ if existing log entry has same index and term
 	have_log_entry:=false
 	if rf.index_map_f(args.LastIncludeIndex)>=0 && rf.index_map_f(args.LastIncludeIndex) <= len(rf.Log)-1 {
-		if rf.Log[rf.index_map_f(args.LastIncludeTerm)].Term == args.LastIncludeTerm{
+		if rf.Log[rf.index_map_f(args.LastIncludeIndex)].Term == args.LastIncludeTerm{
 			have_log_entry=true
 		}
 	}
@@ -556,8 +558,10 @@ func (rf *Raft) sendHeartBeatsAll(){
 				i_th_Pre_Log_Index := Prev_Log_Index[i]
 				i_th_Pre_Log_Term := rf.LastIncludeTerm
 				// fmt.Printf("prev log index is %v\n",i_th_Pre_Log_Index)
-				if rf.index_map_f(i_th_Pre_Log_Index) > -1{
-					i_th_Pre_Log_Term=rf.Log[rf.index_map_f(i_th_Pre_Log_Index)].Term
+				if rf.index_map_f(i_th_Pre_Log_Index) >= -1{
+					if rf.index_map_f(i_th_Pre_Log_Index) > -1{
+						i_th_Pre_Log_Term=rf.Log[rf.index_map_f(i_th_Pre_Log_Index)].Term
+					}
 					var new_entries []LogEntry
 					// fmt.Printf("###### leader %v len is %v think %v prev is %v\n",rf.me,len(rf.Log),i,Prev_Log_Index[i])
 					if len(rf.Log)-1 >= rf.index_map_f(i_th_Pre_Log_Index)+1{
@@ -578,6 +582,7 @@ func (rf *Raft) sendHeartBeatsAll(){
 					// }
 					go rf.sendHeartBeat(i,&args)	// also use other threads to deal with the 
 				}else{	//the rf.index_map_f(i_th_Pre_Log_Index) < -1 means the position is trimmed
+					// fmt.Printf("<L%v:T%v> send the snapshot to server %v,the i_th_Pre_Log_Index is %v,index mapped is %v\n",rf.me,rf.currentTerm,i,i_th_Pre_Log_Index,rf.index_map_f(i_th_Pre_Log_Index))
 					go rf.sendSnapShot(i)
 				}
 			}
@@ -708,8 +713,8 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 	// actually, the follower's log is trimmed but not committed case will never happen
 	// I mean no need to check the rf.Log[rf.index_map_f(args.PrevLogIndex)].Term is exist or not
 	if rf.index_map_f(args.PrevLogIndex) < 0 {
-		fmt.Printf("the rf.index_map_f(args.PrevLogIndex) <map-|%v:no_map-|%v> is less then 0, not in consider\n",rf.index_map_f(args.PrevLogIndex),args.PrevLogIndex)
-		rf.PrintLogEntries()
+		// fmt.Printf("the rf.index_map_f(args.PrevLogIndex) <map-|%v:no_map-|%v> is less then 0, not in consider\n",rf.index_map_f(args.PrevLogIndex),args.PrevLogIndex)
+		// rf.PrintLogEntries()
 	}else if args.PrevLogTerm != rf.Log[rf.index_map_f(args.PrevLogIndex)].Term{
 		// remember that the args.PervLogIndex might be -1
 		reply.Term = rf.currentTerm
