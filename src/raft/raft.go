@@ -210,7 +210,7 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 }
 func (rf *Raft) sendSnapShot(server int){
 	rf.mu.Lock()
-	// rf.PrintLogEntries()
+	rf.PrintLogEntries()
 	args := InstallSnapshotArgs{
 		Term	:	rf.currentTerm,
 		LeaderId	:	rf.me,
@@ -234,7 +234,7 @@ func (rf *Raft) sendSnapShot(server int){
 			rf.persist()
 		}else{
 			// install the snapshot successfully, update the nextindex
-			// fmt.Printf("send the snapshot successfully and rf.LastIncludeIndex is %v\n",rf.LastIncludeIndex)
+			fmt.Printf("send the snapshot successfully and rf.LastIncludeIndex is %v\n",rf.LastIncludeIndex)
 			rf.NextIndex[server] = rf.LastIncludeIndex + 1
 		}	
 	}
@@ -329,7 +329,7 @@ type AppendEntriesReply	struct	{
 // example RequestVote RPC handler.
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
-	// fmt.Printf("<%v:T%v> get a vote request from %v\n",rf.me,rf.currentTerm,args.CandidateId)
+	fmt.Printf("<%v:T%v> get a vote request from %v\n",rf.me,rf.currentTerm,args.CandidateId)
 	rf.mu.Lock()
 	if args.Term<rf.currentTerm{
 		reply.Term = rf.currentTerm
@@ -494,7 +494,7 @@ func (rf *Raft) CollectVoteRes(server int, args *RequestVoteArgs){
 			rf.MatchIndex[i]=0
 		}
 		// the matchIndex[] initialized with all 0
-		// fmt.Printf("leader is %v\n",rf.me)
+		fmt.Printf("leader is %v\n",rf.me)
 	}
 	rf.mu.Unlock()
 	go rf.sendHeartBeatsAll()
@@ -582,7 +582,7 @@ func (rf *Raft) sendHeartBeatsAll(){
 					// }
 					go rf.sendHeartBeat(i,&args)	// also use other threads to deal with the 
 				}else{	//the rf.index_map_f(i_th_Pre_Log_Index) < -1 means the position is trimmed
-					// fmt.Printf("<L%v:T%v> send the snapshot to server %v,the i_th_Pre_Log_Index is %v,index mapped is %v\n",rf.me,rf.currentTerm,i,i_th_Pre_Log_Index,rf.index_map_f(i_th_Pre_Log_Index))
+					fmt.Printf("<L%v:T%v> send the snapshot to server %v,the i_th_Pre_Log_Index is %v,index mapped is %v\n",rf.me,rf.currentTerm,i,i_th_Pre_Log_Index,rf.index_map_f(i_th_Pre_Log_Index))
 					go rf.sendSnapShot(i)
 				}
 			}
@@ -722,7 +722,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 		// meet a problem that the len is larger then the leader,hance the return len might be larger then the nextindex[server]
 		reply.XTerm = rf.Log[rf.index_map_f(args.PrevLogIndex)].Term
 		var xindex int
-		for conflict_idx := args.PrevLogIndex; rf.Log[rf.index_map_f(conflict_idx)].Term == rf.Log[rf.index_map_f(args.PrevLogIndex)].Term;conflict_idx--{
+		for conflict_idx := args.PrevLogIndex; rf.index_map_f(conflict_idx) < 0 || rf.Log[rf.index_map_f(conflict_idx)].Term == rf.Log[rf.index_map_f(args.PrevLogIndex)].Term;conflict_idx--{
 			xindex = conflict_idx
 		}
 		reply.XIndex= xindex
@@ -771,6 +771,7 @@ func (rf *Raft) SendApplyMsg(sendsnapshot bool){
 	var apply_msg_slice []ApplyMsg
 	rf.mu.Lock()
 	if sendsnapshot{
+		fmt.Printf("send snapshot\n")
 		new_apply_msg := ApplyMsg{
 			SnapshotValid	:	true,
 			Snapshot	:	rf.SnapShot,
@@ -868,7 +869,7 @@ func (rf *Raft) ticker() {
 			
 			if rf.state == RaftFollower || rf.state == RaftCandidate{
 				if rf.RecvHeartBeat == false {
-					// fmt.Printf("server %v find a timeout \n",rf.me)
+					fmt.Printf("server %v find a timeout \n",rf.me)
 					go rf.sendRequestVoteAll()
 				}else{
 					rf.RecvHeartBeat = false
@@ -1045,3 +1046,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 // 2D
 // 首先我先来添加相应的数据结构，主要是新的installsnapshot rpc，同时，看上去，需要在rf结构体里面增加对应的内容
 // 然后我遇到的一个问题在于他死锁了，查看一堆资料之后，发现，上面把applymsg全都放到锁里面不合适，因此，我修改了sendapplymsg的方式。
+// 修复一些边界条件后，可以正常跑，但是现在遇到的问题是，会产生timeout 10m的情况。而且就算能过，这个性能也非常的慢。大概需要跑到360s更多。而我看到的其他的实现会少将近100s
+// 因此继续检查。
+// 另一个怀疑的对象是，由于第一次都运行成功了，但是第二次可能存在锁死的情况。这是另一个怀疑对象。毕竟是同一个程序跑的。
+// 我检查了输出，发现不是，而是在某一个时刻之后，他没能正确的选出leader。这应该是在选leader的逻辑中，因为snapshot的问题，导致没能成功。
