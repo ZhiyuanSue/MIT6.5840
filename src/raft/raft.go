@@ -94,6 +94,15 @@ type Raft struct {
 	LastIncludeTerm int
 }
 
+func (rf *Raft) Lock(pos string){
+	fmt.Printf("<S%v> Lock at %v",rf.me,pos)
+	rf.mu.Lock()
+}
+func (rf *Raft) Unlock(pos string){
+	fmt.Printf("<S%v> Unlock at %v",rf.me,pos)
+	rf.mu.Unlock()
+}
+
 // return currentTerm and whether this server
 // believes it is the leader.
 func (rf *Raft) GetState() (int, bool) {
@@ -195,6 +204,8 @@ func (rf *Raft) index_map_f_1(index_B int) int{
 // that index. Raft should now trim its log as much as possible.
 func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	// Your code here (2D).
+	// fmt.Printf("<S%v> get a snapshot request %v\n",rf.me,index)
+	// rf.PrintLogEntries()
 	rf.mu.Lock()
 	if (index <= rf.CommitIndex && index > rf.LastIncludeIndex){
 		rf.LastIncludeTerm = rf.Log[rf.index_map_f(index)].Term
@@ -205,12 +216,14 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 			rf.LastApplied = index
 		}
 	}
+	rf.persist()
+	// rf.PrintLogEntries()
 	
 	rf.mu.Unlock()
 }
 func (rf *Raft) sendSnapShot(server int){
 	rf.mu.Lock()
-	rf.PrintLogEntries()
+	// rf.PrintLogEntries()
 	args := InstallSnapshotArgs{
 		Term	:	rf.currentTerm,
 		LeaderId	:	rf.me,
@@ -329,7 +342,7 @@ type AppendEntriesReply	struct	{
 // example RequestVote RPC handler.
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
-	fmt.Printf("<%v:T%v> get a vote request from %v\n",rf.me,rf.currentTerm,args.CandidateId)
+	// fmt.Printf("<%v:T%v> get a vote request from %v\n",rf.me,rf.currentTerm,args.CandidateId)
 	rf.mu.Lock()
 	if args.Term<rf.currentTerm{
 		reply.Term = rf.currentTerm
@@ -494,7 +507,7 @@ func (rf *Raft) CollectVoteRes(server int, args *RequestVoteArgs){
 			rf.MatchIndex[i]=0
 		}
 		// the matchIndex[] initialized with all 0
-		fmt.Printf("leader is %v\n",rf.me)
+		// fmt.Printf("leader is %v\n",rf.me)
 	}
 	rf.mu.Unlock()
 	go rf.sendHeartBeatsAll()
@@ -526,12 +539,13 @@ func (rf *Raft) PrintLogEntries(){
 	fmt.Printf("====== ====== ======\n")
 	fmt.Printf("<S%v:LogLen%v:Cmt%v:Term%v>\n\t",rf.me,rf.index_map_f_1(len(rf.Log)),rf.CommitIndex,rf.currentTerm)
 	// start:=0
+	fmt.Printf("<LII:%v|LIT:%v>\n",rf.LastIncludeIndex,rf.LastIncludeTerm)
 	start:=len(rf.Log)-10
 	if start < 0{
 		start = 0
 	}
 	for i:=start;i<len(rf.Log);i++{
-		fmt.Printf("[T%v:C%v]",rf.Log[i].Term,rf.Log[i].Command)
+		fmt.Printf("[T%v:I%v:C%v]",rf.Log[i].Term,rf.index_map_f_1(i),rf.Log[i].Command)
 	}
 	fmt.Printf("\n")
 	fmt.Printf("====== ====== ======\n")
@@ -540,50 +554,45 @@ func (rf *Raft) PrintLogEntries(){
 func (rf *Raft) sendHeartBeatsAll(){
 	// time should be the same as the ticker
 	// rf.PrintLogEntries()
-	for rf.killed() == false && rf.state == RaftLeader {
+	for rf.killed() == false {
 		// fmt.Printf("%v send heartbeat\n",rf.me);
-		var Prev_Log_Index []int
 		rf.mu.Lock()
-		cur_Term := rf.currentTerm
+		if rf.state == RaftLeader{
+			// fmt.Printf("###### leader log len is %v\n",len(rf.Log))
 
-		for i:=0;i<len(rf.NextIndex);i++{
-			Prev_Log_Index = append(Prev_Log_Index,rf.NextIndex[i]-1)
-		}
-		commit_idx := rf.CommitIndex
-		// fmt.Printf("###### leader log len is %v\n",len(rf.Log))
-
-		for i :=0;i<len(rf.peers);i++{
-			// fmt.Printf("start set heart beats to all servers\n")
-			if i!=rf.me && rf.state == RaftLeader{
-				i_th_Pre_Log_Index := Prev_Log_Index[i]
-				i_th_Pre_Log_Term := rf.LastIncludeTerm
-				// fmt.Printf("prev log index is %v\n",i_th_Pre_Log_Index)
-				if rf.index_map_f(i_th_Pre_Log_Index) >= -1{
-					if rf.index_map_f(i_th_Pre_Log_Index) > -1{
-						i_th_Pre_Log_Term=rf.Log[rf.index_map_f(i_th_Pre_Log_Index)].Term
+			for i :=0;i<len(rf.peers);i++{
+				// fmt.Printf("start set heart beats to all servers\n")
+				if i!=rf.me && rf.state == RaftLeader{
+					i_th_Pre_Log_Index := rf.NextIndex[i]-1
+					i_th_Pre_Log_Term := rf.LastIncludeTerm
+					// fmt.Printf("prev log index is %v\n",i_th_Pre_Log_Index)
+					if rf.index_map_f(i_th_Pre_Log_Index) >= -1{
+						if rf.index_map_f(i_th_Pre_Log_Index) > -1{
+							i_th_Pre_Log_Term=rf.Log[rf.index_map_f(i_th_Pre_Log_Index)].Term
+						}
+						var new_entries []LogEntry
+						// fmt.Printf("###### leader %v len is %v think %v prev is %v\n",rf.me,len(rf.Log),i,rf.NextIndex[i]-1)
+						if len(rf.Log)-1 >= rf.index_map_f(i_th_Pre_Log_Index)+1{
+							new_entries = rf.Log[rf.index_map_f(i_th_Pre_Log_Index)+1:]
+						}
+						args := AppendEntriesArgs{
+							Term:	rf.currentTerm,
+							LeaderId:	rf.me,
+							PrevLogIndex:	i_th_Pre_Log_Index,
+							PrevLogTerm:	i_th_Pre_Log_Term,
+							Entries:	new_entries,
+							LeaderCommit:	rf.CommitIndex,
+						}
+						
+						// if len(new_entries)>0{
+						// 	fmt.Printf("====== send append to server %v prev log index is %v\n",i,i_th_Pre_Log_Index)
+						// 	PrintHeartBeatsFrameArgs(args)
+						// }
+						go rf.sendHeartBeat(i,&args)	// also use other threads to deal with the 
+					}else{	//the rf.index_map_f(i_th_Pre_Log_Index) < -1 means the position is trimmed
+						// fmt.Printf("<L%v:T%v> send the snapshot to server %v,the i_th_Pre_Log_Index is %v,index mapped is %v\n",rf.me,rf.currentTerm,i,i_th_Pre_Log_Index,rf.index_map_f(i_th_Pre_Log_Index))
+						go rf.sendSnapShot(i)
 					}
-					var new_entries []LogEntry
-					// fmt.Printf("###### leader %v len is %v think %v prev is %v\n",rf.me,len(rf.Log),i,Prev_Log_Index[i])
-					if len(rf.Log)-1 >= rf.index_map_f(i_th_Pre_Log_Index)+1{
-						new_entries = rf.Log[rf.index_map_f(i_th_Pre_Log_Index)+1:]
-					}
-					args := AppendEntriesArgs{
-						Term:	cur_Term,
-						LeaderId:	rf.me,
-						PrevLogIndex:	i_th_Pre_Log_Index,
-						PrevLogTerm:	i_th_Pre_Log_Term,
-						Entries:	new_entries,
-						LeaderCommit:	commit_idx,
-					}
-					
-					// if len(new_entries)>0{
-					// 	fmt.Printf("====== send append to server %v prev log index is %v\n",i,i_th_Pre_Log_Index)
-					// 	PrintHeartBeatsFrameArgs(args)
-					// }
-					go rf.sendHeartBeat(i,&args)	// also use other threads to deal with the 
-				}else{	//the rf.index_map_f(i_th_Pre_Log_Index) < -1 means the position is trimmed
-					fmt.Printf("<L%v:T%v> send the snapshot to server %v,the i_th_Pre_Log_Index is %v,index mapped is %v\n",rf.me,rf.currentTerm,i,i_th_Pre_Log_Index,rf.index_map_f(i_th_Pre_Log_Index))
-					go rf.sendSnapShot(i)
 				}
 			}
 		}
@@ -712,9 +721,28 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 	// if have the log but the log term is not match
 	// actually, the follower's log is trimmed but not committed case will never happen
 	// I mean no need to check the rf.Log[rf.index_map_f(args.PrevLogIndex)].Term is exist or not
-	if rf.index_map_f(args.PrevLogIndex) < 0 {
-		// fmt.Printf("the rf.index_map_f(args.PrevLogIndex) <map-|%v:no_map-|%v> is less then 0, not in consider\n",rf.index_map_f(args.PrevLogIndex),args.PrevLogIndex)
+	if rf.index_map_f(args.PrevLogIndex) < -1 {
+		// fmt.Printf("<S%v> the rf.index_map_f(args.PrevLogIndex) <map-|%v:no_map-|%v> is less then 0, not in consider\n",rf.me,rf.index_map_f(args.PrevLogIndex),args.PrevLogIndex)
 		// rf.PrintLogEntries()
+		reply.Term=rf.currentTerm
+		reply.Success = false
+		// we think it is a old package and do nothing
+		reply.XTerm = rf.LastIncludeTerm
+		reply.XIndex = rf.LastIncludeIndex
+		rf.mu.Unlock()
+		return
+	}else if rf.index_map_f(args.PrevLogIndex) == -1 {
+		if args.PrevLogTerm != rf.LastIncludeTerm{
+			// remember that the args.PervLogIndex might be -1
+			reply.Term = rf.currentTerm
+			reply.Success = false
+			// meet a problem that the len is larger then the leader,hance the return len might be larger then the nextindex[server]
+			reply.XTerm = rf.LastIncludeTerm
+			reply.XIndex= args.PrevLogIndex
+			rf.mu.Unlock()
+			// fmt.Printf("###### server %v here return false args.prev term %v rf term %v\n",rf.me,args.PrevLogTerm,rf.Log[args.PrevLogIndex].Term)
+			return
+		}
 	}else if args.PrevLogTerm != rf.Log[rf.index_map_f(args.PrevLogIndex)].Term{
 		// remember that the args.PervLogIndex might be -1
 		reply.Term = rf.currentTerm
@@ -771,7 +799,7 @@ func (rf *Raft) SendApplyMsg(sendsnapshot bool){
 	var apply_msg_slice []ApplyMsg
 	rf.mu.Lock()
 	if sendsnapshot{
-		fmt.Printf("send snapshot\n")
+		// fmt.Printf("send snapshot\n")
 		new_apply_msg := ApplyMsg{
 			SnapshotValid	:	true,
 			Snapshot	:	rf.SnapShot,
@@ -782,7 +810,13 @@ func (rf *Raft) SendApplyMsg(sendsnapshot bool){
 	}else{
 		// fmt.Printf("server %v have a commit %v last applied %v\n",rf.me, rf.CommitIndex,rf.LastApplied)
 		cmt_Index:=rf.CommitIndex
+		if cmt_Index < rf.LastIncludeIndex{
+			cmt_Index = rf.LastIncludeIndex
+		}
 		Last_Applied:=rf.LastApplied
+		if Last_Applied < rf.LastIncludeIndex{
+			Last_Applied = rf.LastIncludeIndex
+		}
 		// rf.PrintLogEntries()
 		for cmt_Index > Last_Applied && rf.index_map_f_1(len(rf.Log)) > Last_Applied && rf.index_map_f_1(len(rf.Log)) > cmt_Index {
 			Last_Applied += 1
@@ -797,10 +831,11 @@ func (rf *Raft) SendApplyMsg(sendsnapshot bool){
 		rf.LastApplied=Last_Applied
 	}
 	rf.mu.Unlock()
-
+	fmt.Printf("start send apply msg\n")
 	for i:=0;i<len(apply_msg_slice);i++ {
 		rf.ApplyCh <- apply_msg_slice[i]
 	}
+	fmt.Printf("end send apply msg\n")
 }
 
 // the service using Raft (e.g. a k/v server) wants to start
@@ -864,20 +899,19 @@ func (rf *Raft) ticker() {
 	for rf.killed() == false {
 		// Your code here (2A)
 		// Check if a leader election should be started.
-		rf.mu.Lock()
 		if ticker_count%25==0{
-			
+			rf.mu.Lock()
 			if rf.state == RaftFollower || rf.state == RaftCandidate{
 				if rf.RecvHeartBeat == false {
-					fmt.Printf("server %v find a timeout \n",rf.me)
+					// fmt.Printf("server %v find a timeout \n",rf.me)
 					go rf.sendRequestVoteAll()
 				}else{
 					rf.RecvHeartBeat = false
 				}
 			}
+			rf.mu.Unlock()
 		}
 		// rf.PrintLogEntries()
-		rf.mu.Unlock()
 		ticker_count++
 		if ticker_count%7==0{
 			rf.SendApplyMsg(false)
