@@ -1108,13 +1108,11 @@ func snapcommon(t *testing.T, name string, disconnect bool, reliable bool, crash
 	leader1 := cfg.checkOneLeader()
 
 	for i := 0; i < iters; i++ {
-		fmt.Printf("================================ snapcommon start iter\n")
 		victim := (leader1 + 1) % servers
 		sender := leader1
 		if i%3 == 1 {
 			sender = (leader1 + 1) % servers
 			victim = leader1
-			fmt.Printf("================================ victime is leader\n")
 		}
 
 		if disconnect {
@@ -1131,7 +1129,7 @@ func snapcommon(t *testing.T, name string, disconnect bool, reliable bool, crash
 		for i := 0; i < nn; i++ {
 			cfg.rafts[sender].Start(rand.Int())
 		}
-		fmt.Printf("================================ snapcommon after for\n")
+
 		// let applier threads catch up with the Start()'s
 		if disconnect == false && crash == false {
 			// make sure all followers have caught up, so that
@@ -1141,29 +1139,21 @@ func snapcommon(t *testing.T, name string, disconnect bool, reliable bool, crash
 		} else {
 			cfg.one(rand.Int(), servers-1, true)
 		}
-		fmt.Printf("================================ snapcommon after cfgone\n")
+
 		if cfg.LogSize() >= MAXLOGSIZE {
 			cfg.t.Fatalf("Log size too large")
 		}
 		if disconnect {
-			fmt.Printf("================================ snapcommon disconnect\n")
 			// reconnect a follower, who maybe behind and
 			// needs to rceive a snapshot to catch up.
 			cfg.connect(victim)
-			fmt.Printf("================================ snapcommon disconnect reconnect\n")
 			cfg.one(rand.Int(), servers, true)
-			fmt.Printf("================================ snapcommon disconnect after cfgone\n")
 			leader1 = cfg.checkOneLeader()
 		}
-		fmt.Printf("================================ snapcommon after disconnect\n")
 		if crash {
-			fmt.Printf("================================ snapcommon crash\n")
 			cfg.start1(victim, cfg.applierSnap)
-			fmt.Printf("================================ snapcommon crash after start\n")
 			cfg.connect(victim)
-			fmt.Printf("================================ snapcommon crash after connect victim\n")
 			cfg.one(rand.Int(), servers, true)
-			fmt.Printf("================================ snapcommon crash after cfgone\n")
 			leader1 = cfg.checkOneLeader()
 		}
 	}

@@ -92,6 +92,7 @@ type Raft struct {
 	SnapShot []byte
 	LastIncludeIndex int
 	LastIncludeTerm int
+	apply_msg_slice []ApplyMsg
 }
 
 func (rf *Raft) Lock(pos string){
@@ -300,9 +301,8 @@ func (rf *Raft) ReplySnapShot(args *InstallSnapshotArgs,reply *InstallSnapshotRe
 	//reply
 	reply.Term = rf.currentTerm
 	// send the applymsg
-
+	rf.AppendApplyMsg(true)
 	rf.mu.Unlock()
-	rf.SendApplyMsg(true)
 }
 
 // example RequestVote RPC arguments structure.
@@ -663,7 +663,6 @@ func (rf *Raft) sendHeartBeat(server int, args *AppendEntriesArgs){
 	// use two for loop: 
 	// outer decrese the N to test
 	// inner check all the match index
-	old_Commit_Index := rf.CommitIndex
 	for N := rf.index_map_f_1(len(rf.Log))-1 ; N > rf.CommitIndex ; N--{
 		total_num := 0
 		for i:=0;i<len(rf.peers);i++{
@@ -680,12 +679,9 @@ func (rf *Raft) sendHeartBeat(server int, args *AppendEntriesArgs){
 			}
 		}
 	}
-	cur_Commit_Index := rf.CommitIndex
 	// need to send Apply Msg to ApplyCh
+	rf.AppendApplyMsg(false)
 	rf.mu.Unlock()
-	if old_Commit_Index!=cur_Commit_Index{
-		rf.SendApplyMsg(false)
-	}
 }
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
 	ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
@@ -787,7 +783,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 	reply.Success = true
 	// If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)
 	// fmt.Printf("leader commit is %v rf commit is %v len log is %v\n",args.LeaderCommit,rf.CommitIndex,len(rf.Log))
-	old_Commit_Index := rf.CommitIndex
 	if args.LeaderCommit > rf.CommitIndex{
 		if args.LeaderCommit >= rf.index_map_f_1(len(rf.Log))-1{
 			rf.CommitIndex = rf.index_map_f_1(len(rf.Log)) -1
@@ -795,16 +790,12 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 			rf.CommitIndex = args.LeaderCommit
 		}
 		// not the raft required but the lab required: send to the ApplyCh
+		// as the commit index might change
+		rf.AppendApplyMsg(false)
 	}
-	cur_Commit_Index := rf.CommitIndex
 	rf.mu.Unlock()
-	if old_Commit_Index != cur_Commit_Index{
-		rf.SendApplyMsg(false)
-	}
 }
-func (rf *Raft) SendApplyMsg(sendsnapshot bool){
-	var apply_msg_slice []ApplyMsg
-	rf.mu.Lock()
+func (rf *Raft) AppendApplyMsg(sendsnapshot bool){
 	if sendsnapshot{
 		// fmt.Printf("send snapshot\n")
 		new_apply_msg := ApplyMsg{
@@ -813,7 +804,7 @@ func (rf *Raft) SendApplyMsg(sendsnapshot bool){
 			SnapshotIndex	:	rf.LastIncludeIndex,
 			SnapshotTerm	:	rf.LastIncludeTerm,
 		}
-		apply_msg_slice = append(apply_msg_slice,new_apply_msg)
+		rf.apply_msg_slice = append(rf.apply_msg_slice,new_apply_msg)
 	}else{
 		// fmt.Printf("server %v have a commit %v last applied %v\n",rf.me, rf.CommitIndex,rf.LastApplied)
 		cmt_Index:=rf.CommitIndex
@@ -833,15 +824,21 @@ func (rf *Raft) SendApplyMsg(sendsnapshot bool){
 				Command			: cmd,
 				CommandIndex	: Last_Applied,
 			}
-			apply_msg_slice=append(apply_msg_slice,new_apply_msg)	
+			rf.apply_msg_slice=append(rf.apply_msg_slice,new_apply_msg)	
 		}
 		rf.LastApplied=Last_Applied
 	}
-	rf.mu.Unlock()
+}
+
+func (rf *Raft) SendApplyMsg(){
 	// fmt.Printf("start send apply msg\n")
-	for i:=0;i<len(apply_msg_slice);i++ {
-		rf.ApplyCh <- apply_msg_slice[i]
+	Last_Applied := len(rf.apply_msg_slice)
+	for i:=0;i<Last_Applied;i++ {
+		rf.ApplyCh <- rf.apply_msg_slice[i]
 	}
+	rf.mu.Lock()
+	rf.apply_msg_slice=append([]ApplyMsg(nil),rf.apply_msg_slice[Last_Applied:]...)
+	rf.mu.Unlock()
 	// fmt.Printf("end send apply msg\n")
 }
 
@@ -920,9 +917,9 @@ func (rf *Raft) ticker() {
 		}
 		// rf.PrintLogEntries()
 		ticker_count++
-		// if ticker_count%7==0{
-		// 	rf.SendApplyMsg(false)
-		// }
+		if ticker_count%7==0{
+			go rf.SendApplyMsg()
+		}
 		// pause for a random amount of time between 50 and 350
 		// milliseconds.
 		ms := 6 + (rand.Int63() % 8)
