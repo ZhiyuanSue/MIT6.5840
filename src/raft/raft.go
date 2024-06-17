@@ -95,11 +95,11 @@ type Raft struct {
 }
 
 func (rf *Raft) Lock(pos string){
-	fmt.Printf("<S%v> Lock at %v",rf.me,pos)
+	// fmt.Printf("<S%v> Lock at %v",rf.me,pos)
 	rf.mu.Lock()
 }
 func (rf *Raft) Unlock(pos string){
-	fmt.Printf("<S%v> Unlock at %v",rf.me,pos)
+	// fmt.Printf("<S%v> Unlock at %v",rf.me,pos)
 	rf.mu.Unlock()
 }
 
@@ -663,6 +663,7 @@ func (rf *Raft) sendHeartBeat(server int, args *AppendEntriesArgs){
 	// use two for loop: 
 	// outer decrese the N to test
 	// inner check all the match index
+	old_Commit_Index := rf.CommitIndex
 	for N := rf.index_map_f_1(len(rf.Log))-1 ; N > rf.CommitIndex ; N--{
 		total_num := 0
 		for i:=0;i<len(rf.peers);i++{
@@ -679,9 +680,12 @@ func (rf *Raft) sendHeartBeat(server int, args *AppendEntriesArgs){
 			}
 		}
 	}
+	cur_Commit_Index := rf.CommitIndex
 	// need to send Apply Msg to ApplyCh
-	// rf.SendApplyMsg()
 	rf.mu.Unlock()
+	if old_Commit_Index!=cur_Commit_Index{
+		rf.SendApplyMsg(false)
+	}
 }
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
 	ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
@@ -783,6 +787,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 	reply.Success = true
 	// If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)
 	// fmt.Printf("leader commit is %v rf commit is %v len log is %v\n",args.LeaderCommit,rf.CommitIndex,len(rf.Log))
+	old_Commit_Index := rf.CommitIndex
 	if args.LeaderCommit > rf.CommitIndex{
 		if args.LeaderCommit >= rf.index_map_f_1(len(rf.Log))-1{
 			rf.CommitIndex = rf.index_map_f_1(len(rf.Log)) -1
@@ -790,10 +795,12 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 			rf.CommitIndex = args.LeaderCommit
 		}
 		// not the raft required but the lab required: send to the ApplyCh
-		// as the commit index might change
-		// rf.SendApplyMsg()
 	}
+	cur_Commit_Index := rf.CommitIndex
 	rf.mu.Unlock()
+	if old_Commit_Index != cur_Commit_Index{
+		rf.SendApplyMsg(false)
+	}
 }
 func (rf *Raft) SendApplyMsg(sendsnapshot bool){
 	var apply_msg_slice []ApplyMsg
@@ -831,11 +838,11 @@ func (rf *Raft) SendApplyMsg(sendsnapshot bool){
 		rf.LastApplied=Last_Applied
 	}
 	rf.mu.Unlock()
-	fmt.Printf("start send apply msg\n")
+	// fmt.Printf("start send apply msg\n")
 	for i:=0;i<len(apply_msg_slice);i++ {
 		rf.ApplyCh <- apply_msg_slice[i]
 	}
-	fmt.Printf("end send apply msg\n")
+	// fmt.Printf("end send apply msg\n")
 }
 
 // the service using Raft (e.g. a k/v server) wants to start
@@ -913,9 +920,9 @@ func (rf *Raft) ticker() {
 		}
 		// rf.PrintLogEntries()
 		ticker_count++
-		if ticker_count%7==0{
-			rf.SendApplyMsg(false)
-		}
+		// if ticker_count%7==0{
+		// 	rf.SendApplyMsg(false)
+		// }
 		// pause for a random amount of time between 50 and 350
 		// milliseconds.
 		ms := 6 + (rand.Int63() % 8)
