@@ -307,8 +307,8 @@ func (rf *Raft) ReplySnapShot(args *InstallSnapshotArgs,reply *InstallSnapshotRe
 	//reply
 	reply.Term = rf.currentTerm
 	// send the applymsg
-	rf.AppendApplyMsg(true)
 	rf.Unlock("ReplySnapShot")
+	rf.SendApplyMsg(true)
 }
 
 // example RequestVote RPC arguments structure.
@@ -686,7 +686,6 @@ func (rf *Raft) sendHeartBeat(server int, args *AppendEntriesArgs){
 		}
 	}
 	// need to send Apply Msg to ApplyCh
-	rf.AppendApplyMsg(false)
 	rf.Unlock("sendHeartBeat")
 }
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
@@ -797,11 +796,12 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 		}
 		// not the raft required but the lab required: send to the ApplyCh
 		// as the commit index might change
-		rf.AppendApplyMsg(false)
 	}
 	rf.Unlock("AppendEntries")
 }
-func (rf *Raft) AppendApplyMsg(sendsnapshot bool){
+func (rf *Raft) SendApplyMsg(sendsnapshot bool){
+	var apply_msg_slice []ApplyMsg
+	rf.mu.Lock()
 	if sendsnapshot{
 		// fmt.Printf("send snapshot\n")
 		new_apply_msg := ApplyMsg{
@@ -810,7 +810,7 @@ func (rf *Raft) AppendApplyMsg(sendsnapshot bool){
 			SnapshotIndex	:	rf.LastIncludeIndex,
 			SnapshotTerm	:	rf.LastIncludeTerm,
 		}
-		rf.apply_msg_slice = append(rf.apply_msg_slice,new_apply_msg)
+		apply_msg_slice = append(apply_msg_slice,new_apply_msg)
 	}else{
 		// fmt.Printf("server %v have a commit %v last applied %v\n",rf.me, rf.CommitIndex,rf.LastApplied)
 		cmt_Index:=rf.CommitIndex
@@ -830,25 +830,14 @@ func (rf *Raft) AppendApplyMsg(sendsnapshot bool){
 				Command			: cmd,
 				CommandIndex	: Last_Applied,
 			}
-			rf.apply_msg_slice=append(rf.apply_msg_slice,new_apply_msg)	
+			apply_msg_slice=append(apply_msg_slice,new_apply_msg)	
 		}
 		rf.LastApplied=Last_Applied
 	}
-}
-
-func (rf *Raft) SendApplyMsg(){
-	// fmt.Printf("start send apply msg\n")
-	Last_Applied := len(rf.apply_msg_slice)
-	if Last_Applied > 20{
-		Last_Applied = 20
+	rf.mu.Unlock()
+	for i:=0;i<len(apply_msg_slice);i++ {
+		rf.ApplyCh <- apply_msg_slice[i]
 	}
-	for i:=0;i<Last_Applied;i++ {
-		rf.ApplyCh <- rf.apply_msg_slice[i]
-	}
-	rf.Lock("SendApplyMsg")
-	rf.apply_msg_slice=append([]ApplyMsg(nil),rf.apply_msg_slice[Last_Applied:]...)
-	rf.Unlock("SendApplyMsg")
-	// fmt.Printf("end send apply msg\n")
 }
 
 // the service using Raft (e.g. a k/v server) wants to start
@@ -906,31 +895,31 @@ func (rf *Raft) killed() bool {
 	z := atomic.LoadInt32(&rf.dead)
 	return z == 1
 }
-func (rf *Raft) ticker_apply(){
-	for rf.killed() == false {
-		rf.SendApplyMsg()
-		ms := 6*7 + (rand.Int63() % 8*7)
-		time.Sleep(time.Duration(ms) * time.Millisecond)
-	}
-}
 func (rf *Raft) ticker() {
+	ticker_count := 0
 	for rf.killed() == false {
 		// Your code here (2A)
 		// Check if a leader election should be started.
-		rf.Lock("ticker")
-		if rf.state == RaftFollower || rf.state == RaftCandidate{
-			if rf.RecvHeartBeat == false {
-				// fmt.Printf("server %v find a timeout \n",rf.me)
-				go rf.sendRequestVoteAll()
-			}else{
-				rf.RecvHeartBeat = false
+		if ticker_count%25==0{
+			rf.mu.Lock()
+			if rf.state == RaftFollower || rf.state == RaftCandidate{
+				if rf.RecvHeartBeat == false {
+					// fmt.Printf("server %v find a timeout \n",rf.me)
+					go rf.sendRequestVoteAll()
+				}else{
+					rf.RecvHeartBeat = false
+				}
 			}
+			rf.mu.Unlock()
 		}
-		rf.Unlock("ticker")
 		// rf.PrintLogEntries()
+		ticker_count++
+		if ticker_count%7==0{
+			rf.SendApplyMsg(false)
+		}
 		// pause for a random amount of time between 50 and 350
 		// milliseconds.
-		ms := 6*25 + (rand.Int63() % 8*25)
+		ms := 6 + (rand.Int63() % 8)
 		// the 2A has a warning of "warning: term changed even though there were no failures"
 		// if I use 10 times per second, the heartbeat should be 100 ms
 		// and only the time of election timeout larger then the 100 ms, that the timeout never happen
@@ -980,7 +969,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	}
 	// start ticker goroutine to start elections
 	go rf.ticker()
-	go rf.ticker_apply()
 
 
 	return rf
@@ -1111,4 +1099,31 @@ func Make(peers []*labrpc.ClientEnd, me int,
 // install snapshots (disconnect+unreliable)
 // 以及install snapshots (unreliable+crash)
 // 经常出现apply error: server x apply out of order, expected index x, got x
+// unreliable churn
 // Figure 8 (unreliable) apply error: commit index= x server=a y != server=b z
+// TestBasicAgree2B (2.00s) config.go:594: one(100) failed to reach agreement(确定发生了，所以打算从这个开始修)
+
+// 我复制一段log吧
+// ====== ====== ======
+// leader is 1
+// ====== ====== ======
+// ====== ====== ======
+// ###### leader 1 len is 1 think 0 prev is 0
+// ###### leader 1 len is 1 think 2 prev is 0
+// send heart beat to 2
+// Test (2B): basic agreement ...
+// ###### after start the leader 1 log len is 1 term is 1 command is 100
+// leader is 0
+// ====== ====== ======
+// <S0:LogLen1:Cmt0:Term2>
+// 	<LII:0|LIT:0>
+// [T0:I0:C<nil>]
+// ====== ====== ======
+// ###### leader 0 len is 1 think 1 prev is 0
+// ###### leader 0 len is 1 think 2 prev is 0
+
+// 在这里本来leader是1，但是因为启动的时候，也许做了一些事情，导致0超时了
+// 然后还没来得及把自己的log复制给其他人，leader地位就变成了0
+// 这个从逻辑上来说，没有问题，完全可行。
+// 那问题来了，如何避免这个事情呢。最开始一个简单的想法是，加个等待时间，等心跳函数复制过去，看看是否自己还是leader。
+// 但是会有问题。
