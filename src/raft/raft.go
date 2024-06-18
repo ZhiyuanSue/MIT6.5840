@@ -254,7 +254,7 @@ func (rf *Raft) sendSnapShot(server int){
 			rf.persist()
 		}else{
 			// install the snapshot successfully, update the nextindex
-			fmt.Printf("send the snapshot successfully and rf.LastIncludeIndex is %v\n",rf.LastIncludeIndex)
+			// fmt.Printf("send the snapshot successfully and rf.LastIncludeIndex is %v\n",rf.LastIncludeIndex)
 			rf.NextIndex[server] = rf.LastIncludeIndex + 1
 		}	
 	}
@@ -756,7 +756,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 		// meet a problem that the len is larger then the leader,hance the return len might be larger then the nextindex[server]
 		reply.XTerm = rf.Log[rf.index_map_f(args.PrevLogIndex)].Term
 		var xindex int
-		for conflict_idx := args.PrevLogIndex; rf.index_map_f(conflict_idx) < 0 || rf.Log[rf.index_map_f(conflict_idx)].Term == rf.Log[rf.index_map_f(args.PrevLogIndex)].Term;conflict_idx--{
+		for conflict_idx := args.PrevLogIndex; rf.index_map_f(conflict_idx) >= 0 && rf.Log[rf.index_map_f(conflict_idx)].Term == rf.Log[rf.index_map_f(args.PrevLogIndex)].Term;conflict_idx--{
 			xindex = conflict_idx
 		}
 		reply.XIndex= xindex
@@ -1097,3 +1097,5 @@ func Make(peers []*labrpc.ClientEnd, me int,
 // 因此继续检查。
 // 另一个怀疑的对象是，由于第一次都运行成功了，但是第二次可能存在锁死的情况。这是另一个怀疑对象。毕竟是同一个程序跑的。
 // 我检查了输出，发现不是，而是在某一个时刻之后，他没能正确的选出leader。这应该是在选leader的逻辑中，因为snapshot的问题，导致没能成功。
+// 我继续查看了for循环，因为按照逻辑，锁死这件事情本身并不会发生，另一种可能是，在上锁之后，有个for循环死循环了
+// 就是Append entries中的conflict_idx的地方出了问题，这也符合逻辑，也就是说，并不总是会运行到这一步。但是偶尔会遇到，所以造成了死锁的问题。
