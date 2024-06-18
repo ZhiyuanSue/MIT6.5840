@@ -225,21 +225,26 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 func (rf *Raft) sendSnapShot(server int){
 	rf.mu.Lock()
 	// rf.PrintLogEntries()
-	args := InstallSnapshotArgs{
-		Term	:	rf.currentTerm,
-		LeaderId	:	rf.me,
-		LastIncludeIndex	:	rf.LastIncludeIndex,
-		LastIncludeTerm	:	rf.LastIncludeTerm,
-		Offset	:	0,
-		Data	:	rf.SnapShot,
-		Done	:	true,
-	}
+	ok := false
 	reply := InstallSnapshotReply{}
-
-	rf.mu.Unlock()
-	ok := rf.peers[server].Call("Raft.ReplySnapShot", &args, &reply)
+	if rf.killed() == false && rf.state == RaftLeader{
+		args := InstallSnapshotArgs{
+			Term	:	rf.currentTerm,
+			LeaderId	:	rf.me,
+			LastIncludeIndex	:	rf.LastIncludeIndex,
+			LastIncludeTerm	:	rf.LastIncludeTerm,
+			Offset	:	0,
+			Data	:	rf.SnapShot,
+			Done	:	true,
+		}
+		
+		rf.mu.Unlock()
+		ok = rf.peers[server].Call("Raft.ReplySnapShot", &args, &reply)
+	}else{
+		rf.mu.Unlock()
+	}
 	rf.mu.Lock()
-	if ok{
+	if ok && rf.killed() == false && rf.state == RaftLeader{
 		if(reply.Term > rf.currentTerm){
 			rf.currentTerm=reply.Term
 			rf.state = RaftFollower
@@ -833,6 +838,9 @@ func (rf *Raft) AppendApplyMsg(sendsnapshot bool){
 func (rf *Raft) SendApplyMsg(){
 	// fmt.Printf("start send apply msg\n")
 	Last_Applied := len(rf.apply_msg_slice)
+	if Last_Applied > 20{
+		Last_Applied = 20
+	}
 	for i:=0;i<Last_Applied;i++ {
 		rf.ApplyCh <- rf.apply_msg_slice[i]
 	}
@@ -897,32 +905,31 @@ func (rf *Raft) killed() bool {
 	z := atomic.LoadInt32(&rf.dead)
 	return z == 1
 }
-
+func (rf *Raft) ticker_apply(){
+	for rf.killed() == false {
+		rf.SendApplyMsg()
+		ms := 6*7 + (rand.Int63() % 8*7)
+		time.Sleep(time.Duration(ms) * time.Millisecond)
+	}
+}
 func (rf *Raft) ticker() {
-	ticker_count := 0
 	for rf.killed() == false {
 		// Your code here (2A)
 		// Check if a leader election should be started.
-		if ticker_count%25==0{
-			rf.mu.Lock()
-			if rf.state == RaftFollower || rf.state == RaftCandidate{
-				if rf.RecvHeartBeat == false {
-					// fmt.Printf("server %v find a timeout \n",rf.me)
-					go rf.sendRequestVoteAll()
-				}else{
-					rf.RecvHeartBeat = false
-				}
+		rf.mu.Lock()
+		if rf.state == RaftFollower || rf.state == RaftCandidate{
+			if rf.RecvHeartBeat == false {
+				// fmt.Printf("server %v find a timeout \n",rf.me)
+				go rf.sendRequestVoteAll()
+			}else{
+				rf.RecvHeartBeat = false
 			}
-			rf.mu.Unlock()
 		}
+		rf.mu.Unlock()
 		// rf.PrintLogEntries()
-		ticker_count++
-		if ticker_count%7==0{
-			go rf.SendApplyMsg()
-		}
 		// pause for a random amount of time between 50 and 350
 		// milliseconds.
-		ms := 6 + (rand.Int63() % 8)
+		ms := 6*25 + (rand.Int63() % 8*25)
 		// the 2A has a warning of "warning: term changed even though there were no failures"
 		// if I use 10 times per second, the heartbeat should be 100 ms
 		// and only the time of election timeout larger then the 100 ms, that the timeout never happen
@@ -972,6 +979,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	}
 	// start ticker goroutine to start elections
 	go rf.ticker()
+	go rf.ticker_apply()
 
 
 	return rf
