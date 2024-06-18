@@ -98,11 +98,11 @@ type Raft struct {
 
 func (rf *Raft) Lock(pos string){
 	// fmt.Printf("<S%v> Lock at %v",rf.me,pos)
-	rf.internal_mu.Lock()
+	rf.mu.Lock()
 }
 func (rf *Raft) Unlock(pos string){
 	// fmt.Printf("<S%v> Unlock at %v",rf.me,pos)
-	rf.internal_mu.Unlock()
+	rf.mu.Unlock()
 }
 
 // return currentTerm and whether this server
@@ -1099,3 +1099,16 @@ func Make(peers []*labrpc.ClientEnd, me int,
 // 我检查了输出，发现不是，而是在某一个时刻之后，他没能正确的选出leader。这应该是在选leader的逻辑中，因为snapshot的问题，导致没能成功。
 // 我继续查看了for循环，因为按照逻辑，锁死这件事情本身并不会发生，另一种可能是，在上锁之后，有个for循环死循环了
 // 就是Append entries中的conflict_idx的地方出了问题，这也符合逻辑，也就是说，并不总是会运行到这一步。但是偶尔会遇到，所以造成了死锁的问题。
+
+// OK，总体基本测试是能过的，但是仍然会有apply error，也就是顺序出现问题的情况。
+// 因为我的时间不是很够了，我得先做3A去了。
+// 不过，我还是记录一下我测试之后出现问题的测例以及出现的问题。我会运行足够多的次数，基本会在具体测例出现的错误都覆盖住
+// 另一个我遵循的原则是，同时测试的线程数量设为32（我的电脑是16个核心，弄成两倍）
+// 因为在我之前200个并行的时候，确实存在无法达成一致，但是问题在于，他有很高的CPU占用率和磁盘读写率，也占用了很多的内存，肯定是被置换出去了。
+// 而这种情况下，导致他无法正常按时agree，那不是非常正常的事情嘛？？？因为在磁盘上，加上调度不过来，很容易就挂了
+// 因此后续的一个优化是，减少他吃的资源数目，同时运行时间不变（TODO）
+
+// install snapshots (disconnect+unreliable)
+// 以及install snapshots (unreliable+crash)
+// 经常出现apply error: server x apply out of order, expected index x, got x
+// Figure 8 (unreliable) apply error: commit index= x server=a y != server=b z

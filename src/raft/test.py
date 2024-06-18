@@ -128,7 +128,7 @@ def run_tests(
     tests: List[str],
     sequential: bool       = typer.Option(False,  '--sequential',      '-s',    help='Run all test of each group in order'),
     workers: int           = typer.Option(32,      '--workers',         '-p',    help='Number of parallel tasks'),
-    iterations: int        = typer.Option(32,     '--iter',            '-n',    help='Number of iterations to run'),
+    iterations: int        = typer.Option(640,     '--iter',            '-n',    help='Number of iterations to run'),
     output: Optional[Path] = typer.Option(None,   '--output',          '-o',    help='Output path to use'),
     verbose: int           = typer.Option(0,      '--verbose',         '-v',    help='Verbosity level', count=True),
     archive: bool          = typer.Option(False,  '--archive',         '-a',    help='Save all logs intead of only failed ones'),
