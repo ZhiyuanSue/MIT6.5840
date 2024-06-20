@@ -7,6 +7,8 @@ import (
 	"log"
 	"sync"
 	"sync/atomic"
+	"time"
+	"fmt"
 )
 
 const Debug = false
@@ -33,6 +35,8 @@ type Op struct {
 	Value string
 	OpType optype
 	
+	Client_id int64
+	Request_id int64
 }
 
 type KVServer struct {
@@ -46,13 +50,14 @@ type KVServer struct {
 
 	// Your definitions here.
 	client_max_request_id	map[int64]int64
-
+	client_chan	map[int64]chan Op
 	kvdata	map[string]string
 }
 
 
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	// Your code here.
+	fmt.Printf("get a get requset\n")
 	if kv.killed(){
 		reply.Err = ErrWrongLeader
 		return
@@ -68,13 +73,37 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		OpType:op_get,
 
 	}
-	index,_,isLeader:=kv.rf.Start(op)
+	_,_,isLeader:=kv.rf.Start(op)
+	if !isLeader{	// we still need to check whether this is still leader
+		reply.Err = ErrWrongLeader
+		return 
+	}
+	// wait for a while
+	ms := 100
+	time.Sleep(time.Duration(ms) * time.Millisecond)
 
-	reply.Err = OK
+	kv.mu.Lock()
+	client_ch,exist := kv.client_chan[op.Client_id]
+	if !exist{
+		kv.client_chan[op.Client_id]=make(chan Op,1)
+	}
+	client_ch = kv.client_chan[op.Client_id]
+	kv.mu.Unlock()
+	for op := range client_ch {
+		if op.Client_id == args.Client_id && op.Request_id == args.Request_id{
+			reply.Err = OK
+			kv.mu.Lock()
+			reply.Value = kv.kvdata[args.Key]
+			kv.mu.Unlock()
+			return
+		}
+	}
+	reply.Err = ErrWrongLeader
 }
 
 func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	// Your code here.
+	fmt.Printf("get a putAppend request\n")
 	if kv.killed(){
 		reply.Err = ErrWrongLeader
 		return
@@ -101,10 +130,25 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 
 	}
 	_,_,isLeader:=kv.rf.Start(op)
-	if !isLeader{
+	if !isLeader{	// we still need to check whether this is still leader
 		reply.Err = ErrWrongLeader
 		return 
 	}
+
+	kv.mu.Lock()
+	client_ch,exist := kv.client_chan[op.Client_id]
+	if !exist{
+		kv.client_chan[op.Client_id]=make(chan Op,1)
+	}
+	client_ch = kv.client_chan[op.Client_id]
+	kv.mu.Unlock()
+	for op := range client_ch {
+		if op.Client_id == args.Client_id && op.Request_id == args.Request_id{
+			reply.Err = OK
+			return
+		}
+	}
+	reply.Err = ErrWrongLeader
 	reply.Err = OK
 }
 
@@ -149,20 +193,48 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.maxraftstate = maxraftstate
 
 	// You may need initialization code here.
+	kv.client_chan = make(map[int64]chan Op)
+	kv.kvdata = make(map[string]string)
+	kv.client_max_request_id = make(map[int64]int64)
 
 	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 
 	// You may need initialization code here.
-	
+	go kv.recv_msg_from_raft()
+	fmt.Printf("%v finish start\n",kv.me)
 	return kv
 }
 func (kv *KVServer)recv_msg_from_raft(){
 	for !kv.killed(){
+		fmt.Printf("kvserver %v recv msg from raft loop\n",kv.me)
 		select{
 		case m := <- kv.applyCh:
+			fmt.Printf("%v get a m from applych\n",kv.me)
 			op := m.Command.(Op)
-			
+			// judge the request id
+			kv.mu.Lock()
+			request_id,exist := kv.client_max_request_id[op.Client_id]
+			if !exist || op.Request_id > request_id {
+				// no such a request id means this client have not sent a request
+				// or current request is the newest
+
+				// update the request id
+				kv.client_max_request_id[op.Client_id] = op.Request_id
+				// only put and append need to record in the map
+				if op.OpType == op_put{
+					kv.kvdata[op.Key] = op.Value
+				}else if op.OpType == op_append{
+					kv.kvdata[op.Key] += op.Value
+				}
+			}
+			client_ch,exist := kv.client_chan[op.Client_id]
+			if !exist{
+				kv.client_chan[op.Client_id]=make(chan Op,1)
+			}
+			client_ch = kv.client_chan[op.Client_id]
+			kv.mu.Unlock()
+			client_ch <- op
 		}
 	}
 }

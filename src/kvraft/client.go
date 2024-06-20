@@ -10,7 +10,7 @@ type Clerk struct {
 	// You will have to modify this struct.
 	client_id	int64
 	leader_id	int
-	requset_id	int64
+	request_id	int64
 }
 
 func nrand() int64 {
@@ -26,7 +26,7 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 	// You'll have to add code here.
 	ck.client_id = nrand()
 	ck.leader_id = 0
-	ck.requset_id = 0
+	ck.request_id = 0
 	return ck
 }
 
@@ -41,11 +41,11 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 // must match the declared types of the RPC handler function's
 // arguments. and reply must be passed as a pointer.
 func (ck *Clerk) Get(key string) string {
-	ck.requset_id ++
+	ck.request_id ++
 	args := GetArgs{
 		Key:key,
 		Client_id:ck.client_id,
-		Requset_id:ck.requset_id,
+		Request_id:ck.request_id,
 	}
 	for{
 		reply := GetReply{}
@@ -74,13 +74,13 @@ func (ck *Clerk) Get(key string) string {
 // arguments. and reply must be passed as a pointer.
 func (ck *Clerk) PutAppend(key string, value string, op string) {
 	// You will have to modify this function.
-	ck.requset_id ++
+	ck.request_id ++
 	args := PutAppendArgs{
 		Key:key,
 		Value:value,
 		Op:op,
 		Client_id:ck.client_id,
-		Requset_id:ck.requset_id,
+		Request_id:ck.request_id,
 	}
 	for{
 		reply := PutAppendReply{}
