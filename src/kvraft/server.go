@@ -18,11 +18,21 @@ func DPrintf(format string, a ...interface{}) (n int, err error) {
 	return
 }
 
-
+type optype int
+const (
+	op_none optype = iota
+	op_get
+	op_put
+	op_append
+)
 type Op struct {
 	// Your definitions here.
 	// Field names must start with capital letters,
 	// otherwise RPC will break.
+	Key string
+	Value string
+	OpType optype
+	
 }
 
 type KVServer struct {
@@ -35,15 +45,67 @@ type KVServer struct {
 	maxraftstate int // snapshot if log grows this big
 
 	// Your definitions here.
+	client_max_request_id	map[int64]int64
+
+	kvdata	map[string]string
 }
 
 
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	// Your code here.
+	if kv.killed(){
+		reply.Err = ErrWrongLeader
+		return
+	}else{
+		_,isLeader := kv.rf.GetState()
+		if !isLeader {
+			reply.Err = ErrWrongLeader
+			return 
+		}
+	}
+	// op := Op{
+	// 	Key:args.Key,
+	// 	OpType:op_get,
+
+	// }
+	// index,_,isLeader:=kv.rf.Start(op)
+
+	reply.Err = OK
 }
 
 func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	// Your code here.
+	if kv.killed(){
+		reply.Err = ErrWrongLeader
+		return
+	}else{
+		_,isLeader := kv.rf.GetState()
+		if !isLeader {
+			reply.Err = ErrWrongLeader
+			return 
+		}
+	}
+	op_type := op_none
+	if args.Op == "Put"{
+		op_type = op_put
+	}else if (args.Op == "Append"){
+		op_type = op_append
+	}else{
+		reply.Err = ErrWrongRequest
+		return
+	}
+	op := Op{
+		Key:args.Key,
+		Value:args.Value,
+		OpType:op_type,
+
+	}
+	_,_,isLeader:=kv.rf.Start(op)
+	if !isLeader{
+		reply.Err = ErrWrongLeader
+		return 
+	}
+	reply.Err = OK
 }
 
 // the tester calls Kill() when a KVServer instance won't

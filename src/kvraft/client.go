@@ -8,6 +8,9 @@ import "math/big"
 type Clerk struct {
 	servers []*labrpc.ClientEnd
 	// You will have to modify this struct.
+	client_id	int64
+	leader_id	int
+	requset_id	int64
 }
 
 func nrand() int64 {
@@ -21,6 +24,9 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 	ck := new(Clerk)
 	ck.servers = servers
 	// You'll have to add code here.
+	ck.client_id = nrand()
+	ck.leader_id = 0
+	ck.requset_id = 0
 	return ck
 }
 
@@ -35,12 +41,24 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 // must match the declared types of the RPC handler function's
 // arguments. and reply must be passed as a pointer.
 func (ck *Clerk) Get(key string) string {
+	ck.requset_id ++
 	args := GetArgs{
-
+		Key:key,
+		Client_id:ck.client_id,
+		Requset_id:ck.requset_id,
 	}
 	for{
 		reply := GetReply{}
-		
+		ok := ck.servers[ck.leader_id].Call("KVServer.Get",&args,&reply)
+		if !ok || reply.Err == ErrWrongLeader{
+			ck.leader_id = (ck.leader_id+1)%len(ck.servers)
+			continue
+		}
+		if reply.Err == OK{
+			return reply.Value
+		} else if reply.Err == ErrNoKey || reply.Err == ErrWrongRequest{
+			return ""
+		}
 	}
 	// You will have to modify this function.
 	return ""
@@ -56,12 +74,26 @@ func (ck *Clerk) Get(key string) string {
 // arguments. and reply must be passed as a pointer.
 func (ck *Clerk) PutAppend(key string, value string, op string) {
 	// You will have to modify this function.
+	ck.requset_id ++
 	args := PutAppendArgs{
-
+		Key:key,
+		Value:value,
+		Op:op,
+		Client_id:ck.client_id,
+		Requset_id:ck.requset_id,
 	}
 	for{
 		reply := PutAppendReply{}
-		
+		ok := ck.servers[ck.leader_id].Call("KVServer.PutAppend",&args,&reply)
+		if !ok || reply.Err == ErrWrongLeader{
+			ck.leader_id = (ck.leader_id+1)%len(ck.servers)
+			continue
+		}
+		if reply.Err == OK{
+			return
+		} else if reply.Err == ErrNoKey || reply.Err == ErrWrongRequest{
+			return
+		}
 	}
 }
 
