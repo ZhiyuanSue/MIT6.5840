@@ -8,7 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"fmt"
+	// "fmt"
 )
 
 const Debug = false
@@ -57,7 +57,7 @@ type KVServer struct {
 
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	// Your code here.
-	fmt.Printf("get a get requset\n")
+	// fmt.Printf("get a get requset\n")
 	if kv.killed(){
 		reply.Err = ErrWrongLeader
 		return
@@ -89,7 +89,8 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	}
 	client_ch = kv.client_chan[op.Client_id]
 	kv.mu.Unlock()
-	for op := range client_ch {
+	select{
+	case op := <- client_ch :
 		if op.Client_id == args.Client_id && op.Request_id == args.Request_id{
 			reply.Err = OK
 			kv.mu.Lock()
@@ -103,7 +104,7 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 
 func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	// Your code here.
-	fmt.Printf("get a putAppend request\n")
+	// fmt.Printf("get a putAppend request\n")
 	if kv.killed(){
 		reply.Err = ErrWrongLeader
 		return
@@ -142,7 +143,8 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	}
 	client_ch = kv.client_chan[op.Client_id]
 	kv.mu.Unlock()
-	for op := range client_ch {
+	select {
+	case op := <- client_ch:
 		if op.Client_id == args.Client_id && op.Request_id == args.Request_id{
 			reply.Err = OK
 			return
@@ -202,15 +204,12 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 
 	// You may need initialization code here.
 	go kv.recv_msg_from_raft()
-	fmt.Printf("%v finish start\n",kv.me)
+	// fmt.Printf("%v finish start\n",kv.me)
 	return kv
 }
 func (kv *KVServer)recv_msg_from_raft(){
 	for !kv.killed(){
-		fmt.Printf("kvserver %v recv msg from raft loop\n",kv.me)
-		select{
-		case m := <- kv.applyCh:
-			fmt.Printf("%v get a m from applych\n",kv.me)
+		for m := range kv.applyCh {
 			op := m.Command.(Op)
 			// judge the request id
 			kv.mu.Lock()
