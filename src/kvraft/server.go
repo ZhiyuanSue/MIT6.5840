@@ -71,34 +71,40 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	op := Op{
 		Key:args.Key,
 		OpType:op_get,
-
+		Client_id:args.Client_id,
+		Request_id:args.Request_id,
 	}
 	_,_,isLeader:=kv.rf.Start(op)
 	if !isLeader{	// we still need to check whether this is still leader
 		reply.Err = ErrWrongLeader
 		return 
 	}
-	// wait for a while
-	ms := 100
-	time.Sleep(time.Duration(ms) * time.Millisecond)
 
 	kv.mu.Lock()
+	
+	timer := time.NewTimer(100*time.Millisecond)
+
 	client_ch,exist := kv.client_chan[op.Client_id]
 	if !exist{
 		kv.client_chan[op.Client_id]=make(chan Op,1)
 	}
 	client_ch = kv.client_chan[op.Client_id]
 	kv.mu.Unlock()
-	select{
-	case op := <- client_ch :
+	select {
+	case op :=<- client_ch:
 		if op.Client_id == args.Client_id && op.Request_id == args.Request_id{
 			reply.Err = OK
 			kv.mu.Lock()
 			reply.Value = kv.kvdata[args.Key]
 			kv.mu.Unlock()
 			return
+		}else{
+			reply.Err = ErrWrongLeader
 		}
+	case <-timer.C:
+		reply.Err = ErrWrongLeader
 	}
+	
 	reply.Err = ErrWrongLeader
 }
 
@@ -128,7 +134,8 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		Key:args.Key,
 		Value:args.Value,
 		OpType:op_type,
-
+		Client_id:args.Client_id,
+		Request_id:args.Request_id,
 	}
 	_,_,isLeader:=kv.rf.Start(op)
 	if !isLeader{	// we still need to check whether this is still leader
@@ -137,6 +144,9 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	}
 
 	kv.mu.Lock()
+	
+	timer := time.NewTimer(100*time.Millisecond)
+
 	client_ch,exist := kv.client_chan[op.Client_id]
 	if !exist{
 		kv.client_chan[op.Client_id]=make(chan Op,1)
@@ -144,14 +154,17 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	client_ch = kv.client_chan[op.Client_id]
 	kv.mu.Unlock()
 	select {
-	case op := <- client_ch:
+	case op :=<- client_ch:
 		if op.Client_id == args.Client_id && op.Request_id == args.Request_id{
 			reply.Err = OK
 			return
+		}else{
+			reply.Err = ErrWrongLeader
 		}
+	case <-timer.C:
+		reply.Err = ErrWrongLeader
 	}
 	reply.Err = ErrWrongLeader
-	reply.Err = OK
 }
 
 // the tester calls Kill() when a KVServer instance won't
@@ -209,6 +222,7 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 }
 func (kv *KVServer)recv_msg_from_raft(){
 	for !kv.killed(){
+		// fmt.Printf("recv msg for loop\n")
 		for m := range kv.applyCh {
 			op := m.Command.(Op)
 			// judge the request id
