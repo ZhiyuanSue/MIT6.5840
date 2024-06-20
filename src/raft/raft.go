@@ -94,7 +94,6 @@ type Raft struct {
 	LastIncludeIndex int
 	LastIncludeTerm int
 	apply_msg_slice []ApplyMsg
-	fast_start bool
 }
 
 func (rf *Raft) Lock(pos string){
@@ -256,7 +255,7 @@ func (rf *Raft) sendSnapShot(server int){
 		}else{
 			// install the snapshot successfully, update the nextindex
 			// fmt.Printf("send the snapshot successfully and rf.LastIncludeIndex is %v\n",rf.LastIncludeIndex)
-			rf.NextIndex[server] = rf.LastIncludeIndex + 1
+			rf.NextIndex[server] = rf.LastIncludeIndex
 		}	
 	}
 	rf.Unlock("sendSnapShot")
@@ -558,64 +557,59 @@ func (rf *Raft) PrintLogEntries(){
 	fmt.Printf("====== ====== ======\n")
 }
 // HeartBeats
+func (rf *Raft) sendHeartBeatsAll_one_round(){
+	// fmt.Printf("###### leader log len is %v\n",len(rf.Log))
+	for i :=0;i<len(rf.peers);i++{
+		// fmt.Printf("start set heart beats to all servers\n")
+		if i!=rf.me && rf.state == RaftLeader{
+			i_th_Pre_Log_Index := rf.NextIndex[i]-1
+			i_th_Pre_Log_Term := rf.LastIncludeTerm
+			// fmt.Printf("prev log index is %v,last include index is %v\n",i_th_Pre_Log_Index,rf.LastIncludeIndex)
+			if rf.index_map_f(i_th_Pre_Log_Index) >= -1{
+				if rf.index_map_f(i_th_Pre_Log_Index) > -1 {
+					i_th_Pre_Log_Term=rf.Log[rf.index_map_f(i_th_Pre_Log_Index)].Term
+				}
+				var new_entries []LogEntry
+				// fmt.Printf("###### leader %v len is %v think %v prev is %v\n",rf.me,len(rf.Log),i,rf.NextIndex[i]-1)
+				if len(rf.Log)-1 >= rf.index_map_f(i_th_Pre_Log_Index)+1{
+					new_entries = rf.Log[rf.index_map_f(i_th_Pre_Log_Index)+1:]
+				}
+				args := AppendEntriesArgs{
+					Term:	rf.currentTerm,
+					LeaderId:	rf.me,
+					PrevLogIndex:	i_th_Pre_Log_Index,
+					PrevLogTerm:	i_th_Pre_Log_Term,
+					Entries:	new_entries,
+					LeaderCommit:	rf.CommitIndex,
+				}
+				
+				// if len(new_entries)>0{
+				// 	fmt.Printf("====== send append to server %v prev log index is %v\n",i,i_th_Pre_Log_Index)
+				// 	PrintHeartBeatsFrameArgs(args)
+				// }
+				go rf.sendHeartBeat(i,&args)	// also use other threads to deal with the 
+			}else{	//the rf.index_map_f(i_th_Pre_Log_Index) < -1 means the position is trimmed
+				// fmt.Printf("<L%v:T%v> send the snapshot to server %v,the i_th_Pre_Log_Index is %v,index mapped is %v\n",rf.me,rf.currentTerm,i,i_th_Pre_Log_Index,rf.index_map_f(i_th_Pre_Log_Index))
+				go rf.sendSnapShot(i)
+			}
+		}
+	}
+}
 func (rf *Raft) sendHeartBeatsAll(){
 	send_heart_beat_count := 0
 	// time should be the same as the ticker
 	// rf.PrintLogEntries()
 	for rf.killed() == false {
 		// fmt.Printf("%v send heartbeat\n",rf.me);
-		if send_heart_beat_count %20 == 0 || rf.fast_start == true {
-			rf.Lock("sendHeartBeatsAll")
-			if rf.state == RaftLeader{
-				// fmt.Printf("###### leader log len is %v\n",len(rf.Log))
-
-				for i :=0;i<len(rf.peers);i++{
-					// fmt.Printf("start set heart beats to all servers\n")
-					if i!=rf.me && rf.state == RaftLeader{
-						i_th_Pre_Log_Index := rf.NextIndex[i]-1
-						i_th_Pre_Log_Term := rf.LastIncludeTerm
-						// fmt.Printf("prev log index is %v\n",i_th_Pre_Log_Index)
-						if rf.index_map_f(i_th_Pre_Log_Index) >= -1{
-							if rf.index_map_f(i_th_Pre_Log_Index) > -1{
-								i_th_Pre_Log_Term=rf.Log[rf.index_map_f(i_th_Pre_Log_Index)].Term
-							}
-							var new_entries []LogEntry
-							// fmt.Printf("###### leader %v len is %v think %v prev is %v\n",rf.me,len(rf.Log),i,rf.NextIndex[i]-1)
-							if len(rf.Log)-1 >= rf.index_map_f(i_th_Pre_Log_Index)+1{
-								new_entries = rf.Log[rf.index_map_f(i_th_Pre_Log_Index)+1:]
-							}
-							args := AppendEntriesArgs{
-								Term:	rf.currentTerm,
-								LeaderId:	rf.me,
-								PrevLogIndex:	i_th_Pre_Log_Index,
-								PrevLogTerm:	i_th_Pre_Log_Term,
-								Entries:	new_entries,
-								LeaderCommit:	rf.CommitIndex,
-							}
-							
-							// if len(new_entries)>0{
-							// 	fmt.Printf("====== send append to server %v prev log index is %v\n",i,i_th_Pre_Log_Index)
-							// 	PrintHeartBeatsFrameArgs(args)
-							// }
-							go rf.sendHeartBeat(i,&args)	// also use other threads to deal with the 
-						}else{	//the rf.index_map_f(i_th_Pre_Log_Index) < -1 means the position is trimmed
-							// fmt.Printf("<L%v:T%v> send the snapshot to server %v,the i_th_Pre_Log_Index is %v,index mapped is %v\n",rf.me,rf.currentTerm,i,i_th_Pre_Log_Index,rf.index_map_f(i_th_Pre_Log_Index))
-							go rf.sendSnapShot(i)
-						}
-					}
-				}
-			}else{
-				rf.Unlock("sendHeartBeatsAll")
-				break
-			}
-			if rf.fast_start == true{
-				rf.fast_start = false
-				send_heart_beat_count = 0
-			}
+		rf.Lock("sendHeartBeatsAll")
+		if rf.state != RaftLeader{
 			rf.Unlock("sendHeartBeatsAll")
+			break
 		}
+		rf.sendHeartBeatsAll_one_round()
+		rf.Unlock("sendHeartBeatsAll")
 		
-		ms := 5	//heartbeat RPCs no more than ten times per second.
+		ms := 100	//heartbeat RPCs no more than ten times per second.
 		time.Sleep(time.Duration(ms) * time.Millisecond)
 		send_heart_beat_count++
 	}
@@ -897,11 +891,11 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		Term:rf.currentTerm,
 		Command:command,
 	})
+	rf.sendHeartBeatsAll_one_round()
 	index = rf.index_map_f_1(len(rf.Log))-1
 	term = rf.currentTerm
 	// fmt.Printf("###### after start the leader %v log len is %v term is %v command is %v\n",rf.me,index,term,command)
 	rf.persist()
-	rf.fast_start = true
 	rf.Unlock("Start")
 
 	return index, term, isLeader

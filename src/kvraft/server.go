@@ -221,17 +221,21 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	return kv
 }
 func (kv *KVServer)recv_msg_from_raft(){
+	timer := time.NewTicker(100 * time.Millisecond)
+	defer timer.Stop()
 	for !kv.killed(){
 		// fmt.Printf("recv msg for loop\n")
-		for m := range kv.applyCh {
+		select{
+		case m	:= <- kv.applyCh :
 			op := m.Command.(Op)
 			// judge the request id
 			kv.mu.Lock()
 			request_id,exist := kv.client_max_request_id[op.Client_id]
+			kv.mu.Unlock()
 			if !exist || op.Request_id > request_id {
 				// no such a request id means this client have not sent a request
 				// or current request is the newest
-
+				kv.mu.Lock()
 				// update the request id
 				kv.client_max_request_id[op.Client_id] = op.Request_id
 				// only put and append need to record in the map
@@ -240,7 +244,9 @@ func (kv *KVServer)recv_msg_from_raft(){
 				}else if op.OpType == op_append{
 					kv.kvdata[op.Key] += op.Value
 				}
+				kv.mu.Unlock()
 			}
+			kv.mu.Lock()
 			client_ch,exist := kv.client_chan[op.Client_id]
 			if !exist{
 				kv.client_chan[op.Client_id]=make(chan Op,1)
@@ -248,6 +254,11 @@ func (kv *KVServer)recv_msg_from_raft(){
 			client_ch = kv.client_chan[op.Client_id]
 			kv.mu.Unlock()
 			client_ch <- op
+		case <-timer.C:
+			_,isleader := kv.rf.GetState()
+			if !isleader{
+				continue
+			}
 		}
 	}
 }
