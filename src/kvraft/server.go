@@ -63,12 +63,12 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 			return 
 		}
 	}
-	// op := Op{
-	// 	Key:args.Key,
-	// 	OpType:op_get,
+	op := Op{
+		Key:args.Key,
+		OpType:op_get,
 
-	// }
-	// index,_,isLeader:=kv.rf.Start(op)
+	}
+	index,_,isLeader:=kv.rf.Start(op)
 
 	reply.Err = OK
 }
@@ -154,6 +154,15 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 
 	// You may need initialization code here.
-
+	
 	return kv
+}
+func (kv *KVServer)recv_msg_from_raft(){
+	for !kv.killed(){
+		select{
+		case m := <- kv.applyCh:
+			op := m.Command.(Op)
+			
+		}
+	}
 }
