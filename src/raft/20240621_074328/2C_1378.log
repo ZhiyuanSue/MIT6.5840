@@ -1,0 +1,122 @@
+Test (2C): basic persistence ...
+leader is 0
+leader is 2
+leader is 2
+leader is 0
+leader is 2
+  ... Passed --   5.8  3  138   34702    6
+Test (2C): more persistence ...
+leader is 4
+leader is 2
+leader is 0
+leader is 3
+leader is 1
+leader is 4
+  ... Passed --  15.8  5 1284  274158   16
+Test (2C): partitioned leader and one follower crash, leader restarts ...
+leader is 1
+leader is 1
+  ... Passed --   1.5  3   42   10114    4
+Test (2C): Figure 8 ...
+leader is 3
+leader is 4
+leader is 0
+leader is 0
+leader is 2
+leader is 3
+leader is 4
+leader is 2
+leader is 2
+leader is 2
+leader is 1
+leader is 4
+leader is 4
+leader is 3
+leader is 3
+leader is 2
+leader is 1
+leader is 4
+leader is 2
+leader is 1
+leader is 0
+leader is 0
+leader is 2
+leader is 3
+leader is 1
+leader is 0
+leader is 4
+leader is 3
+leader is 1
+leader is 4
+leader is 2
+leader is 2
+leader is 3
+leader is 0
+leader is 4
+leader is 4
+leader is 4
+leader is 4
+leader is 4
+leader is 3
+leader is 3
+leader is 3
+leader is 3
+leader is 0
+leader is 2
+leader is 1
+leader is 0
+leader is 2
+leader is 4
+leader is 3
+leader is 1
+leader is 4
+leader is 4
+leader is 4
+leader is 0
+leader is 0
+leader is 1
+leader is 2
+leader is 3
+leader is 4
+leader is 0
+leader is 0
+leader is 0
+leader is 2
+leader is 1
+leader is 3
+leader is 3
+leader is 0
+leader is 2
+leader is 3
+leader is 3
+leader is 1
+leader is 1
+leader is 0
+leader is 0
+leader is 4
+leader is 3
+leader is 0
+leader is 0
+leader is 4
+leader is 1
+leader is 0
+leader is 0
+leader is 4
+leader is 4
+leader is 2
+leader is 1
+leader is 3
+leader is 4
+leader is 4
+  ... Passed --  31.5  5 1828  383245   86
+Test (2C): unreliable agreement ...
+leader is 3
+  ... Passed --   3.9  5 1148  377020  246
+Test (2C): Figure 8 (unreliable) ...
+leader is 3
+leader is 0
+leader is 2
+2024/06/21 08:23:36 2: log map[1:3481 2:175 3:3877]; server map[1:3481 2:175 3:3877 4:1649]
+2024/06/21 08:23:36 apply error: commit index=4 server=2 7198 != server=3 1649
+exit status 1
+FAIL	6.5840/raft	61.017s

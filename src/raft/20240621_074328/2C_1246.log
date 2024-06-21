@@ -1,0 +1,113 @@
+Test (2C): basic persistence ...
+leader is 0
+leader is 1
+leader is 1
+leader is 0
+leader is 0
+  ... Passed --   5.7  3  134   33820    7
+Test (2C): more persistence ...
+leader is 4
+leader is 2
+leader is 0
+leader is 3
+leader is 1
+leader is 4
+  ... Passed --  15.3  5 1198  262802   16
+Test (2C): partitioned leader and one follower crash, leader restarts ...
+leader is 0
+leader is 0
+  ... Passed --   1.0  3   38    9416    4
+Test (2C): Figure 8 ...
+leader is 1
+leader is 3
+leader is 2
+leader is 2
+leader is 0
+leader is 4
+leader is 1
+leader is 3
+leader is 2
+leader is 0
+leader is 3
+leader is 3
+leader is 4
+leader is 2
+leader is 1
+leader is 0
+leader is 4
+leader is 3
+leader is 2
+leader is 2
+leader is 4
+leader is 0
+leader is 3
+leader is 3
+leader is 2
+leader is 4
+leader is 0
+leader is 3
+leader is 3
+leader is 4
+leader is 4
+leader is 0
+leader is 0
+leader is 1
+leader is 1
+leader is 1
+leader is 1
+leader is 3
+leader is 4
+leader is 0
+leader is 3
+leader is 2
+leader is 4
+leader is 0
+leader is 2
+leader is 1
+leader is 1
+leader is 3
+leader is 3
+leader is 2
+leader is 1
+leader is 4
+leader is 3
+leader is 3
+leader is 1
+leader is 2
+leader is 0
+leader is 3
+leader is 2
+leader is 0
+leader is 1
+leader is 4
+leader is 2
+leader is 2
+leader is 1
+leader is 1
+leader is 1
+leader is 0
+leader is 0
+leader is 4
+leader is 3
+leader is 3
+leader is 1
+leader is 0
+leader is 0
+  ... Passed --  31.3  5 1720  364665   74
+Test (2C): unreliable agreement ...
+leader is 1
+  ... Passed --   3.8  5 1144  372308  246
+Test (2C): Figure 8 (unreliable) ...
+leader is 2
+leader is 4
+leader is 3
+leader is 0
+leader is 2
+leader is 1
+leader is 4
+leader is 0
+leader is 0
+2024/06/21 08:19:50 0: log map[1:8880 2:2641 3:3309 4:4434 5:9716 6:9805 7:8300 8:6429 9:8302 10:5246 11:9201 12:2120 13:9165 14:8084 15:3309 16:6461 17:7977 18:6272 19:2396 20:2884 21:8699 22:7877]; server map[1:8880 2:2641 3:3309 4:4434 5:9716 6:9805 7:8300 8:6429 9:8302 10:5246 11:9201 12:2120 13:9165 14:8084 15:3309 16:6461 17:7977 18:6272 19:2396 20:2884 21:8699 22:7877 23:2280]
+2024/06/21 08:19:50 apply error: commit index=23 server=0 5672 != server=1 2280
+exit status 1
+FAIL	6.5840/raft	70.296s

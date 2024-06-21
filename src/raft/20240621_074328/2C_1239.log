@@ -1,0 +1,121 @@
+Test (2C): basic persistence ...
+leader is 1
+leader is 0
+leader is 0
+leader is 1
+leader is 0
+  ... Passed --   5.6  3  134   33786    7
+Test (2C): more persistence ...
+leader is 4
+leader is 2
+leader is 0
+leader is 3
+leader is 1
+leader is 4
+  ... Passed --  16.5  5 1126  238160   16
+Test (2C): partitioned leader and one follower crash, leader restarts ...
+leader is 2
+leader is 2
+  ... Passed --   1.5  3   42   10110    4
+Test (2C): Figure 8 ...
+leader is 4
+leader is 0
+leader is 2
+leader is 3
+leader is 1
+leader is 0
+leader is 0
+leader is 3
+leader is 3
+leader is 3
+leader is 1
+leader is 4
+leader is 2
+leader is 2
+leader is 3
+leader is 3
+leader is 1
+leader is 1
+leader is 1
+leader is 1
+leader is 2
+leader is 0
+leader is 1
+leader is 4
+leader is 0
+leader is 2
+leader is 3
+leader is 1
+leader is 4
+leader is 0
+leader is 2
+leader is 1
+leader is 1
+leader is 1
+leader is 3
+leader is 0
+leader is 2
+leader is 4
+leader is 1
+leader is 1
+leader is 3
+leader is 4
+leader is 0
+leader is 2
+leader is 1
+leader is 0
+leader is 3
+leader is 3
+leader is 2
+leader is 4
+leader is 0
+leader is 3
+leader is 4
+leader is 1
+leader is 1
+leader is 1
+leader is 1
+leader is 0
+leader is 0
+leader is 0
+leader is 2
+leader is 4
+leader is 3
+leader is 3
+leader is 1
+leader is 0
+leader is 4
+leader is 3
+leader is 0
+leader is 0
+leader is 0
+leader is 2
+leader is 2
+leader is 3
+leader is 4
+leader is 4
+leader is 4
+leader is 4
+leader is 2
+leader is 2
+leader is 0
+leader is 1
+leader is 1
+leader is 1
+leader is 1
+leader is 4
+leader is 3
+  ... Passed --  30.3  5 1848  389350   88
+Test (2C): unreliable agreement ...
+leader is 3
+  ... Passed --   4.1  5 1160  382344  246
+Test (2C): Figure 8 (unreliable) ...
+leader is 0
+leader is 2
+leader is 4
+leader is 1
+leader is 0
+2024/06/21 08:19:35 3: log map[1:543 2:6596 3:1042 4:9394 5:4347 6:3872 7:4940 8:7654 9:9670 10:1986 11:2838]; server map[1:543 2:6596 3:1042 4:9394 5:4347 6:3872 7:4940 8:7654 9:9670 10:1986 11:2838 12:2526]
+2024/06/21 08:19:35 apply error: commit index=12 server=3 2364 != server=4 2526
+exit status 1
+FAIL	6.5840/raft	61.548s

@@ -669,6 +669,8 @@ func (rf *Raft) sendHeartBeat(server int, args *AppendEntriesArgs){
 					rf.NextIndex[server] = reply.XIndex
 				}
 			}
+			rf.Unlock("sendHeartBeat")
+			return
 		}
 	}
 	// If there exists an N such that N > commitIndex, a majority
@@ -810,7 +812,7 @@ func (rf *Raft) SendApplyMsg(sendsnapshot bool){
 	var apply_msg_slice []ApplyMsg
 	rf.mu.Lock()
 	if sendsnapshot{
-		// fmt.Printf("send snapshot\n")
+		// fmt.Printf("<%v> send snapshot with index %v\n",rf.me,rf.LastIncludeIndex)
 		new_apply_msg := ApplyMsg{
 			SnapshotValid	:	true,
 			Snapshot	:	rf.SnapShot,
@@ -837,13 +839,19 @@ func (rf *Raft) SendApplyMsg(sendsnapshot bool){
 				Command			: cmd,
 				CommandIndex	: Last_Applied,
 			}
+			// fmt.Printf("<%v> commit msg term %v index %v command %v\n",rf.me,rf.Log[rf.index_map_f(Last_Applied)].Term,Last_Applied,cmd)
 			apply_msg_slice=append(apply_msg_slice,new_apply_msg)	
 		}
 	}
 	rf.mu.Unlock()
 	for i:=0;i<len(apply_msg_slice);i++ {
-		if sendsnapshot{
-			rf.ApplyCh <- apply_msg_slice[i]
+		if apply_msg_slice[i].SnapshotValid{
+			rf.mu.Lock()
+			Last_Applied := rf.LastApplied
+			rf.mu.Unlock()
+			if apply_msg_slice[i].SnapshotIndex >= Last_Applied{
+				rf.ApplyCh <- apply_msg_slice[i]
+			}
 		}else {
 			rf.mu.Lock()
 			if apply_msg_slice[i].CommandIndex != rf.LastApplied + 1{
@@ -851,6 +859,7 @@ func (rf *Raft) SendApplyMsg(sendsnapshot bool){
 				continue
 			}
 			rf.mu.Unlock()
+			// fmt.Printf("<%v> real commit msg index %v command %v\n",rf.me,apply_msg_slice[i].CommandIndex,apply_msg_slice[i].Command)
 			rf.ApplyCh <- apply_msg_slice[i]
 			rf.mu.Lock()
 			if apply_msg_slice[i].CommandIndex != rf.LastApplied + 1{
@@ -1151,3 +1160,10 @@ func Make(peers []*labrpc.ClientEnd, me int,
 // 这个从逻辑上来说，没有问题，完全可行。
 // 那问题来了，如何避免这个事情呢。最开始一个简单的想法是，加个等待时间，等心跳函数复制过去，看看是否自己还是leader。
 // 但是会有问题。
+// 对于2D中遇到的问题，我查看了一下，就是提交给slice的，index是没有问题的。有问题的，是从slice提交给applych的
+// 也就是说，由于ticker不停地乱序go sendapplymsg，他们本身是锁定的，所以给slice的，是没问题的。但是后面一段没锁定的，则不是
+// 大概是说，比如ticker的从99发到了104，都发完了，这时候，来个snapshot，说只到99，接下来要100，然后接下来肯定发105，那这不就出错了嘛
+// 所以只需要提交snapshot的时候检查一下当前自己提交到哪里了就行。
+// 而，虽然提交的时候没有锁定，但是查看的是lastapplied的，这个是递增的。所以如果检查的点不对，之后只可能更大，那就够了
+// 对于C则不是这样，C中的错误，他本身给slice的就有问题。
+// C的问题貌似是这样的，就是figure8的问题，我在收到了False的reply之后，没有返回，而是继续回到判定Append 到majority的逻辑中去。

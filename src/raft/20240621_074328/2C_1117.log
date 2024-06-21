@@ -1,0 +1,115 @@
+Test (2C): basic persistence ...
+leader is 2
+leader is 2
+leader is 2
+leader is 0
+leader is 0
+  ... Passed --   4.3  3  108   25752    6
+Test (2C): more persistence ...
+leader is 2
+leader is 0
+leader is 3
+leader is 1
+leader is 4
+leader is 2
+  ... Passed --  16.5  5 1136  239234   16
+Test (2C): partitioned leader and one follower crash, leader restarts ...
+leader is 1
+leader is 1
+  ... Passed --   1.5  3   42   10114    4
+Test (2C): Figure 8 ...
+leader is 4
+leader is 1
+leader is 3
+leader is 2
+leader is 0
+leader is 4
+leader is 3
+leader is 2
+leader is 1
+leader is 3
+leader is 0
+leader is 0
+leader is 1
+leader is 2
+leader is 4
+leader is 0
+leader is 0
+leader is 0
+leader is 1
+leader is 1
+leader is 3
+leader is 3
+leader is 3
+leader is 2
+leader is 0
+leader is 0
+leader is 0
+leader is 4
+leader is 1
+leader is 0
+leader is 0
+leader is 0
+leader is 0
+leader is 3
+leader is 3
+leader is 1
+leader is 2
+leader is 0
+leader is 3
+leader is 4
+leader is 4
+leader is 2
+leader is 2
+leader is 0
+leader is 0
+leader is 0
+leader is 1
+leader is 3
+leader is 0
+leader is 0
+leader is 0
+leader is 0
+leader is 0
+leader is 2
+leader is 4
+leader is 0
+leader is 0
+leader is 0
+leader is 4
+leader is 4
+leader is 1
+leader is 3
+leader is 3
+leader is 3
+leader is 4
+leader is 4
+leader is 4
+leader is 1
+leader is 1
+leader is 2
+leader is 4
+leader is 0
+leader is 0
+leader is 1
+leader is 2
+leader is 4
+leader is 1
+leader is 3
+leader is 3
+leader is 3
+leader is 4
+leader is 4
+  ... Passed --  28.7  5 1697  357814   78
+Test (2C): unreliable agreement ...
+leader is 1
+  ... Passed --   4.1  5 1150  378355  246
+Test (2C): Figure 8 (unreliable) ...
+leader is 4
+leader is 1
+leader is 0
+leader is 2
+2024/06/21 08:16:02 2: log map[1:7856 2:8685 3:172 4:1997 5:7177 6:7674 7:6886 8:3506 9:5101 10:31 11:9101 12:5194 13:6252 14:6700]; server map[1:7856 2:8685 3:172 4:1997 5:7177 6:7674 7:6886 8:3506 9:5101 10:31 11:9101 12:5194 13:6252 14:6700 15:1439]
+2024/06/21 08:16:02 apply error: commit index=15 server=2 2973 != server=0 1439
+exit status 1
+FAIL	6.5840/raft	62.205s

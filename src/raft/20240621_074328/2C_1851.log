@@ -1,0 +1,130 @@
+Test (2C): basic persistence ...
+leader is 2
+leader is 1
+leader is 1
+leader is 0
+leader is 2
+  ... Passed --   5.6  3  134   33766    6
+Test (2C): more persistence ...
+leader is 0
+leader is 3
+leader is 1
+leader is 4
+leader is 2
+leader is 0
+  ... Passed --  16.8  5 1132  238958   16
+Test (2C): partitioned leader and one follower crash, leader restarts ...
+leader is 1
+leader is 1
+  ... Passed --   1.5  3   42   10114    4
+Test (2C): Figure 8 ...
+leader is 2
+leader is 4
+leader is 0
+leader is 3
+leader is 3
+leader is 3
+leader is 3
+leader is 4
+leader is 4
+leader is 4
+leader is 4
+leader is 2
+leader is 0
+leader is 0
+leader is 1
+leader is 4
+leader is 2
+leader is 2
+leader is 0
+leader is 3
+leader is 2
+leader is 4
+leader is 1
+leader is 0
+leader is 0
+leader is 2
+leader is 4
+leader is 4
+leader is 4
+leader is 3
+leader is 3
+leader is 0
+leader is 4
+leader is 4
+leader is 4
+leader is 4
+leader is 1
+leader is 3
+leader is 0
+leader is 1
+leader is 4
+leader is 0
+leader is 1
+leader is 4
+leader is 2
+leader is 0
+leader is 0
+leader is 4
+leader is 1
+leader is 0
+leader is 0
+leader is 0
+leader is 0
+leader is 0
+leader is 3
+leader is 4
+leader is 2
+leader is 3
+leader is 1
+leader is 4
+leader is 4
+leader is 4
+leader is 4
+leader is 2
+leader is 3
+leader is 3
+leader is 0
+leader is 2
+leader is 4
+leader is 1
+leader is 0
+leader is 0
+leader is 0
+leader is 2
+leader is 4
+leader is 3
+leader is 1
+leader is 0
+leader is 4
+leader is 2
+leader is 2
+leader is 3
+leader is 3
+leader is 1
+leader is 1
+leader is 4
+leader is 0
+leader is 3
+leader is 1
+leader is 1
+  ... Passed --  33.7  5 1924  406127   88
+Test (2C): unreliable agreement ...
+leader is 3
+  ... Passed --   3.9  5 1148  373193  246
+Test (2C): Figure 8 (unreliable) ...
+leader is 2
+leader is 3
+leader is 4
+leader is 0
+leader is 1
+leader is 4
+leader is 0
+leader is 2
+leader is 0
+leader is 3
+2024/06/21 08:37:17 3: log map[1:6247 2:5660 3:563 4:7828 5:8409 6:8777 7:2985 8:3865 9:8209 10:8658 11:8529 12:7685 13:3690 14:1572 15:3245 16:7082 17:4759 18:5772 19:9401 20:4746 21:1962 22:2043 23:2821 24:4766 25:5711 26:3110]; server map[1:6247 2:5660 3:563 4:7828 5:8409 6:8777 7:2985 8:3865 9:8209 10:8658 11:8529 12:7685 13:3690 14:1572 15:3245 16:7082 17:4759 18:5772 19:9401 20:4746 21:1962 22:2043 23:2821 24:4766 25:5711 26:3110 27:1726]
+2024/06/21 08:37:17 3: log map[1:6247 2:5660 3:563 4:7828 5:8409 6:8777 7:2985 8:3865 9:8209 10:8658 11:8529 12:7685 13:3690 14:1572 15:3245 16:7082 17:4759 18:5772 19:9401 20:4746 21:1962 22:2043 23:2821 24:4766 25:5711 26:3110]; server map[1:6247 2:5660 3:563 4:7828 5:8409 6:8777 7:2985 8:3865 9:8209 10:8658 11:8529 12:7685 13:3690 14:1572 15:3245 16:7082 17:4759 18:5772 19:9401 20:4746 21:1962 22:2043 23:2821 24:4766 25:5711 26:3110 27:1726]
+2024/06/21 08:37:17 apply error: commit index=27 server=3 8684 != server=2 1726
+exit status 1
+FAIL	6.5840/raft	75.755s

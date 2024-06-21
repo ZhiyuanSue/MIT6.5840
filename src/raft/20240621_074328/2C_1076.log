@@ -1,0 +1,110 @@
+Test (2C): basic persistence ...
+leader is 0
+leader is 1
+leader is 1
+leader is 0
+leader is 2
+  ... Passed --   5.6  3  132   33240    6
+Test (2C): more persistence ...
+leader is 4
+leader is 2
+leader is 0
+leader is 3
+leader is 1
+leader is 4
+  ... Passed --  16.5  5 1033  216288   16
+Test (2C): partitioned leader and one follower crash, leader restarts ...
+leader is 0
+leader is 0
+  ... Passed --   1.5  3   40    9734    4
+Test (2C): Figure 8 ...
+leader is 3
+leader is 0
+leader is 2
+leader is 1
+leader is 4
+leader is 4
+leader is 2
+leader is 2
+leader is 2
+leader is 0
+leader is 4
+leader is 3
+leader is 1
+leader is 1
+leader is 2
+leader is 4
+leader is 4
+leader is 0
+leader is 2
+leader is 2
+leader is 1
+leader is 3
+leader is 4
+leader is 1
+leader is 1
+leader is 2
+leader is 2
+leader is 4
+leader is 4
+leader is 1
+leader is 2
+leader is 4
+leader is 1
+leader is 1
+leader is 3
+leader is 3
+leader is 0
+leader is 4
+leader is 4
+leader is 0
+leader is 2
+leader is 1
+leader is 3
+leader is 4
+leader is 2
+leader is 0
+leader is 1
+leader is 1
+leader is 3
+leader is 2
+leader is 4
+leader is 1
+leader is 1
+leader is 1
+leader is 2
+leader is 0
+leader is 3
+leader is 4
+leader is 1
+leader is 1
+leader is 0
+leader is 2
+leader is 3
+leader is 1
+leader is 2
+leader is 0
+leader is 4
+leader is 4
+leader is 3
+leader is 1
+leader is 4
+leader is 3
+leader is 3
+leader is 2
+leader is 0
+leader is 0
+  ... Passed --  30.4  5 1612  335477   76
+Test (2C): unreliable agreement ...
+leader is 2
+  ... Passed --   4.2  5 1156  378692  246
+Test (2C): Figure 8 (unreliable) ...
+leader is 4
+leader is 0
+leader is 2
+leader is 3
+leader is 1
+2024/06/21 08:14:50 1: log map[1:7236 2:3425 3:7606 4:171 5:6154 6:885]; server map[1:7236 2:3425 3:7606 4:171 5:6154 6:885 7:7636]
+2024/06/21 08:14:50 apply error: commit index=7 server=1 4101 != server=2 7636
+exit status 1
+FAIL	6.5840/raft	62.575s
