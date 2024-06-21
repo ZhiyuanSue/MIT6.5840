@@ -260,12 +260,9 @@ func (kv *KVServer)recv_msg_from_raft(){
 				if kv.maxraftstate != -1 && kv.persister.RaftStateSize() >= kv.maxraftstate*4/5 {
 					// only the leader need to do this
 					// fmt.Printf("need to use snapshot %v\n",kv.persister.RaftStateSize())
-					_,isleader := kv.rf.GetState()
-					if isleader{
-						// fmt.Printf("leader gen snapshot index %v\n",m.CommandIndex)
-						s := kv.Generate_Snapshot()
-						go kv.rf.Snapshot(m.CommandIndex,s)
-					}
+					// fmt.Printf("leader gen snapshot index %v\n",m.CommandIndex)
+					s := kv.Generate_Snapshot()
+					go kv.rf.Snapshot(m.CommandIndex,s)
 				}
 				kv.mu.Unlock()
 				client_ch <- op
@@ -314,3 +311,4 @@ func (kv *KVServer) InstallSnapshot(index int, data []byte){
 // partitions, many clients 这里会卡死的问题
 // 我看到的参考资料是这个https://zhuanlan.zhihu.com/p/130671334
 // 他说存在的问题是，因为没有意识到自己的leader角色发生了转换。从而没有新的start给他。所以寄了。所以我加了一个新的timer，反正3A过了，就这样吧。。。
+// 感觉确实3A和3B的工作相对比较简单。理解了我需要做什么之后，基本就稍微调试一下即可
