@@ -152,6 +152,7 @@ func (rf *Raft) readPersist(data []byte) {
 	}
 	// Your code here (2C).
 	// Example:
+	fmt.Printf("<%v> read a persist\n",rf.me)
 	r := bytes.NewBuffer(data)
 	d := labgob.NewDecoder(r)
 	var VotedFor int
@@ -209,7 +210,8 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	// fmt.Printf("<S%v> get a snapshot request %v\n",rf.me,index)
 	// rf.PrintLogEntries()
 	rf.Lock("Snapshot")
-	if (index <= rf.CommitIndex && index > rf.LastIncludeIndex){
+	if (index <= rf.CommitIndex && index > rf.LastIncludeIndex && rf.index_map_f(index) < len(rf.Log)){
+		fmt.Printf("the commitIndex is %v\n",rf.CommitIndex)
 		rf.LastIncludeTerm = rf.Log[rf.index_map_f(index)].Term
 		rf.Log = rf.Log[rf.index_map_f(index):]
 		rf.LastIncludeIndex=index
@@ -513,7 +515,7 @@ func (rf *Raft) CollectVoteRes(server int, args *RequestVoteArgs){
 			rf.MatchIndex[i]=0
 		}
 		// the matchIndex[] initialized with all 0
-		// fmt.Printf("leader is %v\n",rf.me)
+		fmt.Printf("leader is %v\n",rf.me)
 	}
 	rf.Unlock("CollectVoteRes")
 	go rf.sendHeartBeatsAll()
@@ -598,7 +600,7 @@ func (rf *Raft) sendHeartBeatsAll_one_round(){
 func (rf *Raft) sendHeartBeatsAll(){
 	send_heart_beat_count := 0
 	// time should be the same as the ticker
-	// rf.PrintLogEntries()
+	rf.PrintLogEntries()
 	for rf.killed() == false {
 		// fmt.Printf("%v send heartbeat\n",rf.me);
 		rf.Lock("sendHeartBeatsAll")
@@ -643,13 +645,13 @@ func (rf *Raft) sendHeartBeat(server int, args *AppendEntriesArgs){
 		// if he is not the leader ,cannot continue change the commit
 	}else if reply.Term < rf.currentTerm{
 		//ignore,will this case happen???
-		
+		fmt.Printf("unexpected reply.Term < rf.currentTerm\n")
 	}else if reply.Term == rf.currentTerm{
 		if reply.Success == true{
 			rf.MatchIndex[server] = args.PrevLogIndex + len(args.Entries)
 			rf.NextIndex[server] = rf.MatchIndex[server] + 1
-			// fmt.Printf("******server %v success,and args.PrevLogIndex is %v len %v\n",server,args.PrevLogIndex,len(args.Entries))
-			// fmt.Printf("******rf match is %v rf next is %v\n",rf.MatchIndex[server],rf.NextIndex[server])
+			fmt.Printf("******server %v success,and args.PrevLogIndex is %v len %v\n",server,args.PrevLogIndex,len(args.Entries))
+			fmt.Printf("<%v:%v> rf match is %v rf next is %v\n",rf.me,server,rf.MatchIndex[server],rf.NextIndex[server])
 		} else if reply.Success == false{
 			// seems need retry???
 			if reply.XTerm == -1{
@@ -776,21 +778,37 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 	// prev check is for the log before the prev_log_index
 	// the following is used for the logs after the next_log_index
 	if len(args.Entries)!=0{
-		// fmt.Printf("have receve a log append request with len %v\n",len(args.Entries))
+		fmt.Printf("<%v> have receve a log append request with len %v,args.PrevLogIndex is %v\n",rf.me,len(args.Entries),args.PrevLogIndex)
 		// check whether there have any conflict
 		next_log_index := args.PrevLogIndex + 1
-		conflict_idx := 0
+		conflict_idx := -1
+		have_cmp := false
 		for i:=0 ; next_log_index + i < rf.index_map_f_1(len(rf.Log)) && i < len(args.Entries) ; i++{
+			have_cmp = true
 			if rf.Log[rf.index_map_f(next_log_index + i)].Term != args.Entries[i].Term{
 				// fmt.Printf("conflict at %v\n",next_log_index+i)
 				conflict_idx = i
 				break
 			}
 		}
-		// 	fmt.Printf("conflict idx is %v\n",conflict_idx)
+		fmt.Printf("conflict idx is %v cmp is %v\n",conflict_idx,have_cmp)
 		// delete the existing entry and all that follow it
-		rf.Log = rf.Log[:rf.index_map_f(next_log_index)+conflict_idx]
-		rf.Log = append(rf.Log,args.Entries[conflict_idx:]...)
+		if have_cmp && conflict_idx!=-1{
+			rf.Log = rf.Log[:rf.index_map_f(next_log_index)+conflict_idx]
+		}
+		if conflict_idx != -1 {
+			rf.Log = append(rf.Log,args.Entries[conflict_idx:]...)
+		}else if have_cmp == false{
+			conflict_idx = 0
+			rf.Log = append(rf.Log,args.Entries[conflict_idx:]...)
+		}else if have_cmp == true{
+			if args.PrevLogIndex+len(args.Entries) >= rf.index_map_f_1(len(rf.Log)){
+				fmt.Printf("we append\n")
+				conflict_idx = 0
+				rf.Log = rf.Log[:rf.index_map_f(next_log_index)]
+				rf.Log = append(rf.Log,args.Entries[conflict_idx:]...)
+			}
+		}
 		rf.persist()
 	}
 	reply.Term = rf.currentTerm
@@ -806,6 +824,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 		// not the raft required but the lab required: send to the ApplyCh
 		// as the commit index might change
 	}
+	rf.PrintLogEntries()
 	rf.Unlock("AppendEntries")
 }
 func (rf *Raft) SendApplyMsg(sendsnapshot bool){
@@ -839,7 +858,7 @@ func (rf *Raft) SendApplyMsg(sendsnapshot bool){
 				Command			: cmd,
 				CommandIndex	: Last_Applied,
 			}
-			// fmt.Printf("<%v> commit msg term %v index %v command %v\n",rf.me,rf.Log[rf.index_map_f(Last_Applied)].Term,Last_Applied,cmd)
+			fmt.Printf("<%v> commit msg term %v index %v command %v\n",rf.me,rf.Log[rf.index_map_f(Last_Applied)].Term,Last_Applied,cmd)
 			apply_msg_slice=append(apply_msg_slice,new_apply_msg)	
 		}
 	}
@@ -903,7 +922,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	rf.sendHeartBeatsAll_one_round()
 	index = rf.index_map_f_1(len(rf.Log))-1
 	term = rf.currentTerm
-	// fmt.Printf("###### after start the leader %v log len is %v term is %v command is %v\n",rf.me,index,term,command)
+	fmt.Printf("###### after start the leader %v log len is %v term is %v command is %v\n",rf.me,index,term,command)
 	rf.persist()
 	rf.Unlock("Start")
 
@@ -1167,3 +1186,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 // 而，虽然提交的时候没有锁定，但是查看的是lastapplied的，这个是递增的。所以如果检查的点不对，之后只可能更大，那就够了
 // 对于C则不是这样，C中的错误，他本身给slice的就有问题。
 // C的问题貌似是这样的，就是figure8的问题，我在收到了False的reply之后，没有返回，而是继续回到判定Append 到majority的逻辑中去。
+// 好吧，C的根本问题其实是我Appendentries这里，向后添加log的代码出现了问题。
+// 具体来说是这样的，如果先有一个长的log，再有一个短的log append请求，而且都对的上号，我原先的处理方式，会把他从prev开始变成短的log
+// 但是实际上不能这样截断，这有可能是个落后的。
