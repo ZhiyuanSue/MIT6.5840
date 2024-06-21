@@ -966,7 +966,7 @@ func (rf *Raft) ticker() {
 		}
 		// rf.PrintLogEntries()
 		ticker_count++
-		if ticker_count%7==0{
+		if ticker_count%3==0{
 			rf.SendApplyMsg(false)
 		}
 		// pause for a random amount of time between 50 and 350
@@ -1189,3 +1189,5 @@ func Make(peers []*labrpc.ClientEnd, me int,
 // 好吧，C的根本问题其实是我Appendentries这里，向后添加log的代码出现了问题。
 // 具体来说是这样的，如果先有一个长的log，再有一个短的log append请求，而且都对的上号，我原先的处理方式，会把他从prev开始变成短的log
 // 但是实际上不能这样截断，这有可能是个落后的。
+
+// 最后的最后，其实我实测，在2B和2D中，640次仍然各有一次，会发生问题，而且都是基础测例出错。

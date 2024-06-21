@@ -74,7 +74,7 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		Client_id:args.Client_id,
 		Request_id:args.Request_id,
 	}
-	_,_,isLeader:=kv.rf.Start(op)
+	index,_,isLeader:=kv.rf.Start(op)
 	if !isLeader{	// we still need to check whether this is still leader
 		reply.Err = ErrWrongLeader
 		return 
@@ -84,11 +84,11 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	
 	timer := time.NewTimer(100*time.Millisecond)
 
-	client_ch,exist := kv.client_chan[op.Client_id]
+	client_ch,exist := kv.client_chan[int64(index)]
 	if !exist{
-		kv.client_chan[op.Client_id]=make(chan Op,1)
+		kv.client_chan[int64(index)]=make(chan Op,1)
 	}
-	client_ch = kv.client_chan[op.Client_id]
+	client_ch = kv.client_chan[int64(index)]
 	kv.mu.Unlock()
 	select {
 	case op :=<- client_ch:
@@ -137,7 +137,7 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		Client_id:args.Client_id,
 		Request_id:args.Request_id,
 	}
-	_,_,isLeader:=kv.rf.Start(op)
+	index,_,isLeader:=kv.rf.Start(op)
 	if !isLeader{	// we still need to check whether this is still leader
 		reply.Err = ErrWrongLeader
 		return 
@@ -147,11 +147,11 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	
 	timer := time.NewTimer(100*time.Millisecond)
 
-	client_ch,exist := kv.client_chan[op.Client_id]
+	client_ch,exist := kv.client_chan[int64(index)]
 	if !exist{
-		kv.client_chan[op.Client_id]=make(chan Op,1)
+		kv.client_chan[int64(index)]=make(chan Op,1)
 	}
-	client_ch = kv.client_chan[op.Client_id]
+	client_ch = kv.client_chan[int64(index)]
 	kv.mu.Unlock()
 	select {
 	case op :=<- client_ch:
@@ -247,11 +247,11 @@ func (kv *KVServer)recv_msg_from_raft(){
 				kv.mu.Unlock()
 			}
 			kv.mu.Lock()
-			client_ch,exist := kv.client_chan[op.Client_id]
+			client_ch,exist := kv.client_chan[int64(m.CommandIndex)]
 			if !exist{
-				kv.client_chan[op.Client_id]=make(chan Op,1)
+				kv.client_chan[int64(m.CommandIndex)]=make(chan Op,1)
 			}
-			client_ch = kv.client_chan[op.Client_id]
+			client_ch = kv.client_chan[int64(m.CommandIndex)]
 			kv.mu.Unlock()
 			client_ch <- op
 		case <-timer.C:
@@ -262,3 +262,9 @@ func (kv *KVServer)recv_msg_from_raft(){
 		}
 	}
 }
+// 3A 中关于ops complete fast enough这个测例的问题
+// 我发现问题其实在于raft的sendapplymsg的频率。
+// 反正我改到3*(6+(rand.Int63() % 8))是可以过的。
+// partitions, many clients 这里会卡死的问题
+// 我看到的参考资料是这个https://zhuanlan.zhihu.com/p/130671334
+// 他说存在的问题是，因为没有意识到自己的leader角色发生了转换。从而没有新的start给他。所以寄了。
