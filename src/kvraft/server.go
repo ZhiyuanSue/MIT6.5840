@@ -52,6 +52,7 @@ type KVServer struct {
 	client_max_request_id	map[int64]int64
 	client_chan	map[int64]chan Op
 	kvdata	map[string]string
+	persister *raft.Persister
 }
 
 
@@ -214,6 +215,7 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 
 	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
+	kv.persister = persister
 
 	// You may need initialization code here.
 	go kv.recv_msg_from_raft()
@@ -227,33 +229,45 @@ func (kv *KVServer)recv_msg_from_raft(){
 		// fmt.Printf("recv msg for loop\n")
 		select{
 		case m	:= <- kv.applyCh :
-			op := m.Command.(Op)
-			// judge the request id
-			kv.mu.Lock()
-			request_id,exist := kv.client_max_request_id[op.Client_id]
-			kv.mu.Unlock()
-			if !exist || op.Request_id > request_id {
-				// no such a request id means this client have not sent a request
-				// or current request is the newest
+			if m.CommandValid{	// after use the snapshot ,the apply msg might be a snapshot
+				op := m.Command.(Op)
+				// judge the request id
 				kv.mu.Lock()
-				// update the request id
-				kv.client_max_request_id[op.Client_id] = op.Request_id
-				// only put and append need to record in the map
-				if op.OpType == op_put{
-					kv.kvdata[op.Key] = op.Value
-				}else if op.OpType == op_append{
-					kv.kvdata[op.Key] += op.Value
-				}
+				request_id,exist := kv.client_max_request_id[op.Client_id]
 				kv.mu.Unlock()
+				if !exist || op.Request_id > request_id {
+					// no such a request id means this client have not sent a request
+					// or current request is the newest
+					kv.mu.Lock()
+					// update the request id
+					kv.client_max_request_id[op.Client_id] = op.Request_id
+					// only put and append need to record in the map
+					if op.OpType == op_put{
+						kv.kvdata[op.Key] = op.Value
+					}else if op.OpType == op_append{
+						kv.kvdata[op.Key] += op.Value
+					}
+					kv.mu.Unlock()
+				}
+				kv.mu.Lock()
+				client_ch,exist := kv.client_chan[int64(m.CommandIndex)]
+				if !exist{
+					kv.client_chan[int64(m.CommandIndex)]=make(chan Op,1)
+				}
+				client_ch = kv.client_chan[int64(m.CommandIndex)]
+				// generate the snapshot
+				if kv.maxraftstate != -1 && kv.persister.RaftStateSize() >= kv.maxraftstate*4/5 {
+					s := kv.Generate_Snapshot()
+					kv.rf.Snapshot(m.CommandIndex,s)
+				}
+
+				kv.mu.Unlock()
+				client_ch <- op
+			}else if m.SnapshotValid{
+				//a follower's snapshot have been applied
+				kv.InstallSnapshot()
 			}
-			kv.mu.Lock()
-			client_ch,exist := kv.client_chan[int64(m.CommandIndex)]
-			if !exist{
-				kv.client_chan[int64(m.CommandIndex)]=make(chan Op,1)
-			}
-			client_ch = kv.client_chan[int64(m.CommandIndex)]
-			kv.mu.Unlock()
-			client_ch <- op
+			
 		case <-timer.C:
 			_,isleader := kv.rf.GetState()
 			if !isleader{
@@ -262,9 +276,15 @@ func (kv *KVServer)recv_msg_from_raft(){
 		}
 	}
 }
+func (kv *KVServer) Generate_Snapshot() []byte{
+	return nil
+}
+func (kv *KVServer) InstallSnapshot(){
+
+}
 // 3A 中关于ops complete fast enough这个测例的问题
 // 我发现问题其实在于raft的sendapplymsg的频率。
 // 反正我改到3*(6+(rand.Int63() % 8))是可以过的。
 // partitions, many clients 这里会卡死的问题
 // 我看到的参考资料是这个https://zhuanlan.zhihu.com/p/130671334
-// 他说存在的问题是，因为没有意识到自己的leader角色发生了转换。从而没有新的start给他。所以寄了。
+// 他说存在的问题是，因为没有意识到自己的leader角色发生了转换。从而没有新的start给他。所以寄了。所以我加了一个新的timer，反正3A过了，就这样吧。。。
