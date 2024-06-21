@@ -152,7 +152,7 @@ func (rf *Raft) readPersist(data []byte) {
 	}
 	// Your code here (2C).
 	// Example:
-	fmt.Printf("<%v> read a persist\n",rf.me)
+	// fmt.Printf("<%v> read a persist\n",rf.me)
 	r := bytes.NewBuffer(data)
 	d := labgob.NewDecoder(r)
 	var VotedFor int
@@ -211,7 +211,7 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	// rf.PrintLogEntries()
 	rf.Lock("Snapshot")
 	if (index <= rf.CommitIndex && index > rf.LastIncludeIndex && rf.index_map_f(index) < len(rf.Log)){
-		fmt.Printf("the commitIndex is %v\n",rf.CommitIndex)
+		// fmt.Printf("the commitIndex is %v\n",rf.CommitIndex)
 		rf.LastIncludeTerm = rf.Log[rf.index_map_f(index)].Term
 		rf.Log = rf.Log[rf.index_map_f(index):]
 		rf.LastIncludeIndex=index
@@ -515,7 +515,7 @@ func (rf *Raft) CollectVoteRes(server int, args *RequestVoteArgs){
 			rf.MatchIndex[i]=0
 		}
 		// the matchIndex[] initialized with all 0
-		fmt.Printf("leader is %v\n",rf.me)
+		// fmt.Printf("leader is %v\n",rf.me)
 	}
 	rf.Unlock("CollectVoteRes")
 	go rf.sendHeartBeatsAll()
@@ -600,7 +600,7 @@ func (rf *Raft) sendHeartBeatsAll_one_round(){
 func (rf *Raft) sendHeartBeatsAll(){
 	send_heart_beat_count := 0
 	// time should be the same as the ticker
-	rf.PrintLogEntries()
+	// rf.PrintLogEntries()
 	for rf.killed() == false {
 		// fmt.Printf("%v send heartbeat\n",rf.me);
 		rf.Lock("sendHeartBeatsAll")
@@ -650,8 +650,8 @@ func (rf *Raft) sendHeartBeat(server int, args *AppendEntriesArgs){
 		if reply.Success == true{
 			rf.MatchIndex[server] = args.PrevLogIndex + len(args.Entries)
 			rf.NextIndex[server] = rf.MatchIndex[server] + 1
-			fmt.Printf("******server %v success,and args.PrevLogIndex is %v len %v\n",server,args.PrevLogIndex,len(args.Entries))
-			fmt.Printf("<%v:%v> rf match is %v rf next is %v\n",rf.me,server,rf.MatchIndex[server],rf.NextIndex[server])
+			// fmt.Printf("******server %v success,and args.PrevLogIndex is %v len %v\n",server,args.PrevLogIndex,len(args.Entries))
+			// fmt.Printf("<%v:%v> rf match is %v rf next is %v\n",rf.me,server,rf.MatchIndex[server],rf.NextIndex[server])
 		} else if reply.Success == false{
 			// seems need retry???
 			if reply.XTerm == -1{
@@ -778,7 +778,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 	// prev check is for the log before the prev_log_index
 	// the following is used for the logs after the next_log_index
 	if len(args.Entries)!=0{
-		fmt.Printf("<%v> have receve a log append request with len %v,args.PrevLogIndex is %v\n",rf.me,len(args.Entries),args.PrevLogIndex)
+		// fmt.Printf("<%v> have receve a log append request with len %v,args.PrevLogIndex is %v\n",rf.me,len(args.Entries),args.PrevLogIndex)
 		// check whether there have any conflict
 		next_log_index := args.PrevLogIndex + 1
 		conflict_idx := -1
@@ -791,7 +791,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 				break
 			}
 		}
-		fmt.Printf("conflict idx is %v cmp is %v\n",conflict_idx,have_cmp)
+		// fmt.Printf("conflict idx is %v cmp is %v\n",conflict_idx,have_cmp)
 		// delete the existing entry and all that follow it
 		if have_cmp && conflict_idx!=-1{
 			rf.Log = rf.Log[:rf.index_map_f(next_log_index)+conflict_idx]
@@ -803,7 +803,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 			rf.Log = append(rf.Log,args.Entries[conflict_idx:]...)
 		}else if have_cmp == true{
 			if args.PrevLogIndex+len(args.Entries) >= rf.index_map_f_1(len(rf.Log)){
-				fmt.Printf("we append\n")
+				// fmt.Printf("we append\n")
 				conflict_idx = 0
 				rf.Log = rf.Log[:rf.index_map_f(next_log_index)]
 				rf.Log = append(rf.Log,args.Entries[conflict_idx:]...)
@@ -824,7 +824,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs,reply *AppendEntriesReply)
 		// not the raft required but the lab required: send to the ApplyCh
 		// as the commit index might change
 	}
-	rf.PrintLogEntries()
+	// rf.PrintLogEntries()
 	rf.Unlock("AppendEntries")
 }
 func (rf *Raft) SendApplyMsg(sendsnapshot bool){
@@ -858,7 +858,7 @@ func (rf *Raft) SendApplyMsg(sendsnapshot bool){
 				Command			: cmd,
 				CommandIndex	: Last_Applied,
 			}
-			fmt.Printf("<%v> commit msg term %v index %v command %v\n",rf.me,rf.Log[rf.index_map_f(Last_Applied)].Term,Last_Applied,cmd)
+			// fmt.Printf("<%v> commit msg term %v index %v command %v\n",rf.me,rf.Log[rf.index_map_f(Last_Applied)].Term,Last_Applied,cmd)
 			apply_msg_slice=append(apply_msg_slice,new_apply_msg)	
 		}
 	}
@@ -922,7 +922,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	rf.sendHeartBeatsAll_one_round()
 	index = rf.index_map_f_1(len(rf.Log))-1
 	term = rf.currentTerm
-	fmt.Printf("###### after start the leader %v log len is %v term is %v command is %v\n",rf.me,index,term,command)
+	// fmt.Printf("###### after start the leader %v log len is %v term is %v command is %v\n",rf.me,index,term,command)
 	rf.persist()
 	rf.Unlock("Start")
 
