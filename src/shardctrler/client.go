@@ -12,6 +12,9 @@ import "math/big"
 type Clerk struct {
 	servers []*labrpc.ClientEnd
 	// Your data here.
+	client_id	int64
+	leader_id	int
+	request_id	int64
 }
 
 func nrand() int64 {
@@ -25,12 +28,18 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 	ck := new(Clerk)
 	ck.servers = servers
 	// Your code here.
+	ck.client_id = nrand()
+	ck.leader_id = 0
+	ck.request_id = ck.client_id
 	return ck
 }
 
 func (ck *Clerk) Query(num int) Config {
 	args := &QueryArgs{}
 	// Your code here.
+	ck.request_id++
+	args.Client_id = ck.client_id
+	args.Request_id = ck.request_id
 	args.Num = num
 	for {
 		// try each known server.
@@ -48,6 +57,9 @@ func (ck *Clerk) Query(num int) Config {
 func (ck *Clerk) Join(servers map[int][]string) {
 	args := &JoinArgs{}
 	// Your code here.
+	ck.request_id++
+	args.Client_id = ck.client_id
+	args.Request_id = ck.request_id
 	args.Servers = servers
 
 	for {
@@ -66,6 +78,9 @@ func (ck *Clerk) Join(servers map[int][]string) {
 func (ck *Clerk) Leave(gids []int) {
 	args := &LeaveArgs{}
 	// Your code here.
+	ck.request_id++
+	args.Client_id = ck.client_id
+	args.Request_id = ck.request_id
 	args.GIDs = gids
 
 	for {
@@ -84,6 +99,9 @@ func (ck *Clerk) Leave(gids []int) {
 func (ck *Clerk) Move(shard int, gid int) {
 	args := &MoveArgs{}
 	// Your code here.
+	ck.request_id++
+	args.Client_id = ck.client_id
+	args.Request_id = ck.request_id
 	args.Shard = shard
 	args.GID = gid
 
