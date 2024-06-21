@@ -8,7 +8,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	// "fmt"
+	"bytes"
+	"fmt"
 )
 
 const Debug = false
@@ -216,7 +217,7 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 	kv.persister = persister
-
+	kv.InstallSnapshot(kv.rf.LastIncludeIndex,kv.persister.ReadSnapshot())
 	// You may need initialization code here.
 	go kv.recv_msg_from_raft()
 	// fmt.Printf("%v finish start\n",kv.me)
@@ -257,15 +258,18 @@ func (kv *KVServer)recv_msg_from_raft(){
 				client_ch = kv.client_chan[int64(m.CommandIndex)]
 				// generate the snapshot
 				if kv.maxraftstate != -1 && kv.persister.RaftStateSize() >= kv.maxraftstate*4/5 {
-					s := kv.Generate_Snapshot()
-					kv.rf.Snapshot(m.CommandIndex,s)
+					// only the leader need to do this
+					_,isleader := kv.rf.GetState()
+					if isleader{
+						s := kv.Generate_Snapshot()
+						kv.rf.Snapshot(m.CommandIndex,s)
+					}
 				}
-
 				kv.mu.Unlock()
 				client_ch <- op
 			}else if m.SnapshotValid{
 				//a follower's snapshot have been applied
-				kv.InstallSnapshot()
+				kv.InstallSnapshot(m.SnapshotIndex,m.Snapshot)
 			}
 			
 		case <-timer.C:
@@ -277,10 +281,30 @@ func (kv *KVServer)recv_msg_from_raft(){
 	}
 }
 func (kv *KVServer) Generate_Snapshot() []byte{
-	return nil
+	// just like persister
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(kv.kvdata)
+	e.Encode(kv.client_max_request_id)
+	s := w.Bytes()
+	return s
 }
-func (kv *KVServer) InstallSnapshot(){
-
+func (kv *KVServer) InstallSnapshot(index int, data []byte){
+	// the same as the persister,just copy and change is ok
+	if data == nil || len(data) < 1{
+		return
+	}
+	r := bytes.NewBuffer(data)
+	d := labgob.NewDecoder(r)
+	var client_max_request_id	map[int64]int64
+	var kvdata	map[string]string
+	if	d.Decode(&kvdata) != nil ||
+		d.Decode(&client_max_request_id) != nil{
+			fmt.Printf("install snapshot decode fail\n")
+	}else{
+		kv.kvdata = kvdata
+		kv.client_max_request_id =client_max_request_id
+	}
 }
 // 3A 中关于ops complete fast enough这个测例的问题
 // 我发现问题其实在于raft的sendapplymsg的频率。
