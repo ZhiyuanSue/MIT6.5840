@@ -97,11 +97,11 @@ type Raft struct {
 }
 
 func (rf *Raft) Lock(pos string){
-	// fmt.Printf("<S%v> Lock at %v",rf.me,pos)
+	// fmt.Printf("<S%v> Lock at %v\n",rf.me,pos)
 	rf.mu.Lock()
 }
 func (rf *Raft) Unlock(pos string){
-	// fmt.Printf("<S%v> Unlock at %v",rf.me,pos)
+	// fmt.Printf("<S%v> Unlock at %v\n",rf.me,pos)
 	rf.mu.Unlock()
 }
 

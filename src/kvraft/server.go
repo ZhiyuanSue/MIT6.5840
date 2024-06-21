@@ -259,10 +259,12 @@ func (kv *KVServer)recv_msg_from_raft(){
 				// generate the snapshot
 				if kv.maxraftstate != -1 && kv.persister.RaftStateSize() >= kv.maxraftstate*4/5 {
 					// only the leader need to do this
+					// fmt.Printf("need to use snapshot %v\n",kv.persister.RaftStateSize())
 					_,isleader := kv.rf.GetState()
 					if isleader{
+						// fmt.Printf("leader gen snapshot index %v\n",m.CommandIndex)
 						s := kv.Generate_Snapshot()
-						kv.rf.Snapshot(m.CommandIndex,s)
+						go kv.rf.Snapshot(m.CommandIndex,s)
 					}
 				}
 				kv.mu.Unlock()
