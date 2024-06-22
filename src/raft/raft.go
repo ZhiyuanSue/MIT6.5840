@@ -516,9 +516,11 @@ func (rf *Raft) CollectVoteRes(server int, args *RequestVoteArgs){
 		}
 		// the matchIndex[] initialized with all 0
 		// fmt.Printf("leader is %v\n",rf.me)
+		go rf.sendHeartBeatsAll()
+		rf.Unlock("CollectVoteRes")
+		return
 	}
 	rf.Unlock("CollectVoteRes")
-	go rf.sendHeartBeatsAll()
 }
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
@@ -1196,3 +1198,14 @@ func Make(peers []*labrpc.ClientEnd, me int,
 // 这时候你说是否是一致的，这肯定是一致的，但是这个一致是，没有任何提交的一致，而不是会有一个提交的一致。
 // 所以他一看一直没有提交，那就完蛋了。
 // 所以解决这个问题的办法其实很简单，在开头make的时候加个timedelay即可，让他在开始，能够达成一致说我们已经有一个leader了，大家都很稳定了
+// 不过，还是会发现这个问题导致的报错。于是我看到了另一条记录
+// https://github.com/springfieldking/mit-6.824-golabs-2018/issues/1
+// 是这么说的，
+// 还有一种我遇到的可能性，
+// config.go定义的one()函数是通过记录该entry的index，
+// 然后检查是不是commit来实现的。在一些场景下，节点群出现网络分割，例如(1,2,3,4)在一起，2是leader，(0)一个人自己玩儿。
+// 0自己不停地超时选举，然后自己term很高。当一个时刻one()的触发的entry刚被2拿到，0回来了，
+// 在刚好没收到2的heartbeat以前，然后以一个高term触发了重新选举。就会让整个节点群的term迅速升高，
+// 最后基本上因为日志的up-to-date是2重新被选为leader，但是刚才的这个entry是属于之前任期的，
+// 就会让2在新的term里没办法去触发commIndex升高，然后one()会一直等待。
+// 解决办法之一是让leader定期发一个空的entry参与共识，为了让这种情况下的前述entry给commit掉
