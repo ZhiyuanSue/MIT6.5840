@@ -952,7 +952,7 @@ func (rf *Raft) ticker() {
 	for rf.killed() == false {
 		// Your code here (2A)
 		// Check if a leader election should be started.
-		if ticker_count%25==0{
+		if ticker_count%50==0{
 			rf.mu.Lock()
 			if rf.state == RaftFollower || rf.state == RaftCandidate{
 				if rf.RecvHeartBeat == false {
@@ -966,12 +966,10 @@ func (rf *Raft) ticker() {
 		}
 		// rf.PrintLogEntries()
 		ticker_count++
-		if ticker_count%3==0{
-			rf.SendApplyMsg(false)
-		}
+		rf.SendApplyMsg(false)
 		// pause for a random amount of time between 50 and 350
 		// milliseconds.
-		ms := 6 + (rand.Int63() % 8)
+		ms := 3 + (rand.Int63() % 4)
 		// the 2A has a warning of "warning: term changed even though there were no failures"
 		// if I use 10 times per second, the heartbeat should be 100 ms
 		// and only the time of election timeout larger then the 100 ms, that the timeout never happen
@@ -1021,6 +1019,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	}
 	// start ticker goroutine to start elections
 	go rf.ticker()
+	ms := 350
+	time.Sleep(time.Duration(ms) * time.Millisecond)
 
 
 	return rf
@@ -1191,3 +1191,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 // 但是实际上不能这样截断，这有可能是个落后的。
 
 // 最后的最后，其实我实测，在2B和2D中，640次仍然各有一次，会发生问题，而且都是基础测例出错。
+// 2B 的修复：这个修复其实很简单，我看了一下输出的log，他出错的原因是，在开始，去leader那边交了一个，但是这时候因为开始是一堆人同时timeout的，所以这时候没有任何一个leader。
+// 这个时候会导致第一个leader选出来，但是start之后，立马又被新的leader给覆盖了。
+// 这时候你说是否是一致的，这肯定是一致的，但是这个一致是，没有任何提交的一致，而不是会有一个提交的一致。
+// 所以他一看一直没有提交，那就完蛋了。
+// 所以解决这个问题的办法其实很简单，在开头make的时候加个timedelay即可，让他在开始，能够达成一致说我们已经有一个leader了，大家都很稳定了
